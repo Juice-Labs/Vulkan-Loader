@@ -27,8 +27,15 @@ set(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION_MAXIMUM OFF)
 
 project(Vulkan-Loader)
 
-if (UPDATE_DEPS)
-    find_package(PythonInterp 3 REQUIRED)
+    set(CMAKE_C_STANDARD 99)
+    set(CMAKE_C_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+    set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS API_NAME="Vulkan")
+
+    if (UPDATE_DEPS)
+        find_package(PythonInterp 3 REQUIRED)
 
     if (CMAKE_GENERATOR_PLATFORM)
         set(_target_arch ${CMAKE_GENERATOR_PLATFORM})
@@ -278,9 +285,19 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
         endif()
     endif()
 
-    # clang-cl on Windows
-    if((CMAKE_C_COMPILER_ID MATCHES "Clang") AND (CMAKE_CXX_SIMULATE_ID MATCHES "MSVC"))
-        target_compile_options(loader_common_options INTERFACE -Xclang )
+    ## clang-cl on Windows
+    #if((CMAKE_C_COMPILER_ID MATCHES "Clang") AND (CMAKE_CXX_SIMULATE_ID MATCHES "MSVC"))
+    #    target_compile_options(loader_common_options INTERFACE -Xclang )
+    if(APPLE)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_COMPILE_FLAGS}")
+    #clang-cl on Windows
+    elseif((CMAKE_C_COMPILER_ID MATCHES "Clang") AND (CMAKE_CXX_SIMULATE_ID MATCHES "MSVC"))
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Xclang ${COMMON_COMPILE_FLAGS}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xclang -fno-rtti")
+    # clang (not clang-cl) or gcc
+    else()
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_COMPILE_FLAGS}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
     endif()
 
     if(UNIX)
