@@ -344,13 +344,15 @@ if(PKG_CONFIG_FOUND)
         set(VULKAN_LIB_SUFFIX "-1")
     endif ()
     configure_file("vulkan.pc.in" "vulkan.pc" @ONLY)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/vulkan.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
 
 target_link_libraries(vulkan Vulkan::Headers)
 add_library(Vulkan::Vulkan ALIAS vulkan)
 
 install(TARGETS vulkan
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
+
+if(WIN32)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/vulkan-1.pdb
+            DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
+endif()
