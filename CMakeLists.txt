@@ -27,13 +27,13 @@ set(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION_MAXIMUM OFF)
 
 project(Vulkan-Loader)
 
-    set(CMAKE_C_STANDARD 99)
-    set(CMAKE_C_STANDARD_REQUIRED ON)
-    set(CMAKE_CXX_STANDARD 11)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-    if (UPDATE_DEPS)
-        find_package(PythonInterp 3 REQUIRED)
+if (UPDATE_DEPS)
+    find_package(PythonInterp 3 REQUIRED)
 
     if (CMAKE_GENERATOR_PLATFORM)
         set(_target_arch ${CMAKE_GENERATOR_PLATFORM})
@@ -269,10 +269,12 @@ target_compile_features(loader_common_options INTERFACE cxx_std_11)
 set(LOADER_STANDARD_C_PROPERTIES PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED YES C_EXTENSIONS OFF)
 set(LOADER_STANDARD_CXX_PROPERTIES PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS OFF)
 
-if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
+if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT (CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")))
     target_compile_options(loader_common_options INTERFACE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fno-strict-aliasing -fno-builtin-memcmp)
 
-    target_compile_options(loader_common_options INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+    if(NOT (CMAKE_CXX_SIMULATE_ID MATCHES "MSVC"))
+        target_compile_options(loader_common_options INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+    endif()
 
     # For GCC version 7.1 or greater, we need to disable the implicit fallthrough warning since there's no consistent way to satisfy
     # all compilers until they all accept the C++17 standard
@@ -317,6 +319,7 @@ if(MSVC)
     # /w34245: Warn about signed/unsigned mismatch.
     # /guard:cf: Enable control flow guard
     target_compile_options(loader_common_options INTERFACE /WX /GR- /w34456 /w34701 /w34703 /w34057 /w34245 /guard:cf)
+    target_compile_options(loader_common_options INTERFACE -Wno-unused-function)
 
     # Enable control flow guard
     if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.13.0")

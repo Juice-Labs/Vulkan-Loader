@@ -228,7 +228,7 @@ if(WIN32)
                 ${CMAKE_CURRENT_SOURCE_DIR}/vulkan-1.def
                 ${CMAKE_CURRENT_LIST_DIR}/loader.rc)
 
-    target_link_libraries(vulkan loader_specific_options loader-opt)
+    target_link_libraries(vulkan PRIVATE loader_specific_options loader-opt)
 
     if (UPDATE_DEPS)
         add_dependencies(vulkan vl_update_deps)
@@ -245,7 +245,7 @@ if(WIN32)
         target_link_libraries(vulkan OneCoreUAP.lib LIBCMT.LIB LIBCMTD.LIB LIBVCRUNTIME.LIB LIBUCRT.LIB)
         set_target_properties(vulkan PROPERTIES LINK_FLAGS "/NODEFAULTLIB")
     else()
-        target_link_libraries(vulkan cfgmgr32)
+        target_link_libraries(vulkan PRIVATE cfgmgr32)
     endif()
 
     add_dependencies(vulkan loader_asm_gen_files)
@@ -312,7 +312,7 @@ else()
 endif()
 
 # common attributes of the vulkan library
-target_link_libraries(vulkan loader_specific_options)
+target_link_libraries(vulkan PRIVATE loader_specific_options)
 
 set_target_properties(vulkan ${LOADER_STANDARD_C_PROPERTIES})
 if (TARGET asm_offset)
@@ -341,7 +341,7 @@ if(PKG_CONFIG_FOUND)
     configure_file("vulkan.pc.in" "vulkan.pc" @ONLY)
 endif()
 
-target_link_libraries(vulkan Vulkan::Headers)
+target_link_libraries(vulkan PUBLIC Vulkan::Headers)
 add_library(Vulkan::Vulkan ALIAS vulkan)
 
 install(TARGETS vulkan
