@@ -1051,6 +1051,14 @@ static inline void layer_init_device_dispatch_table(VkDevice device, VkLayerDisp
     if (table->CmdDrawMultiEXT == nullptr) { table->CmdDrawMultiEXT = (PFN_vkCmdDrawMultiEXT)StubCmdDrawMultiEXT; }
     table->CmdDrawMultiIndexedEXT = (PFN_vkCmdDrawMultiIndexedEXT) gpa(device, "vkCmdDrawMultiIndexedEXT");
     if (table->CmdDrawMultiIndexedEXT == nullptr) { table->CmdDrawMultiIndexedEXT = (PFN_vkCmdDrawMultiIndexedEXT)StubCmdDrawMultiIndexedEXT; }
+    table->CreateJudaModuleJUICE = (PFN_vkCreateJudaModuleJUICE) gpa(device, "vkCreateJudaModuleJUICE");
+    table->CreateJudaFunctionFromModuleJUICE = (PFN_vkCreateJudaFunctionFromModuleJUICE) gpa(device, "vkCreateJudaFunctionFromModuleJUICE");
+    table->LaunchJudaKernelJUICE = (PFN_vkLaunchJudaKernelJUICE) gpa(device, "vkLaunchJudaKernelJUICE");
+    table->DevicePtrRegisterJUICE = (PFN_vkDevicePtrRegisterJUICE) gpa(device, "vkDevicePtrRegisterJUICE");
+    table->QueryValueJUICE = (PFN_vkQueryValueJUICE) gpa(device, "vkQueryValueJUICE");
+    table->JudaMemcpyJUICE = (PFN_vkJudaMemcpyJUICE) gpa(device, "vkJudaMemcpyJUICE");
+    table->CmdCopyBuffer3DJUICE = (PFN_vkCmdCopyBuffer3DJUICE) gpa(device, "vkCmdCopyBuffer3DJUICE");
+    table->CreateBufferViewJUICE = (PFN_vkCreateBufferViewJUICE) gpa(device, "vkCreateBufferViewJUICE");
     table->SetDeviceMemoryPriorityEXT = (PFN_vkSetDeviceMemoryPriorityEXT) gpa(device, "vkSetDeviceMemoryPriorityEXT");
     if (table->SetDeviceMemoryPriorityEXT == nullptr) { table->SetDeviceMemoryPriorityEXT = (PFN_vkSetDeviceMemoryPriorityEXT)StubSetDeviceMemoryPriorityEXT; }
     table->GetDescriptorSetLayoutHostMappingInfoVALVE = (PFN_vkGetDescriptorSetLayoutHostMappingInfoVALVE) gpa(device, "vkGetDescriptorSetLayoutHostMappingInfoVALVE");

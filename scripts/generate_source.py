@@ -40,6 +40,7 @@ def main(argv):
 
     gen_cmds = [[common_codegen.repo_relative('scripts/loader_genvk.py'),
                  '-registry', os.path.abspath(os.path.join(args.registry,  'vk.xml')),
+                 '-scripts', os.path.abspath(os.path.join(args.registry, '..', 'scripts')),
                  '-quiet',
                  filename] for filename in ['vk_dispatch_table_helper.h',
                                             'vk_layer_dispatch_table.h',
