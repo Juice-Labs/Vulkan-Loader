@@ -1059,6 +1059,8 @@ static inline void layer_init_device_dispatch_table(VkDevice device, VkLayerDisp
     table->JudaMemcpyJUICE = (PFN_vkJudaMemcpyJUICE) gpa(device, "vkJudaMemcpyJUICE");
     table->CmdCopyBuffer3DJUICE = (PFN_vkCmdCopyBuffer3DJUICE) gpa(device, "vkCmdCopyBuffer3DJUICE");
     table->CreateBufferViewJUICE = (PFN_vkCreateBufferViewJUICE) gpa(device, "vkCreateBufferViewJUICE");
+    table->BindBufferViewJUICE = (PFN_vkBindBufferViewJUICE) gpa(device, "vkBindBufferViewJUICE");
+    table->BindImageViewJUICE = (PFN_vkBindImageViewJUICE) gpa(device, "vkBindImageViewJUICE");
     table->SetDeviceMemoryPriorityEXT = (PFN_vkSetDeviceMemoryPriorityEXT) gpa(device, "vkSetDeviceMemoryPriorityEXT");
     if (table->SetDeviceMemoryPriorityEXT == nullptr) { table->SetDeviceMemoryPriorityEXT = (PFN_vkSetDeviceMemoryPriorityEXT)StubSetDeviceMemoryPriorityEXT; }
     table->GetDescriptorSetLayoutHostMappingInfoVALVE = (PFN_vkGetDescriptorSetLayoutHostMappingInfoVALVE) gpa(device, "vkGetDescriptorSetLayoutHostMappingInfoVALVE");

@@ -940,6 +940,8 @@ typedef struct VkLayerDispatchTable_ {
 
     // ---- VK_JUICE_portability extension commands
     PFN_vkCreateBufferViewJUICE CreateBufferViewJUICE;
+    PFN_vkBindBufferViewJUICE BindBufferViewJUICE;
+    PFN_vkBindImageViewJUICE BindImageViewJUICE;
 
     // ---- VK_EXT_pageable_device_local_memory extension commands
     PFN_vkSetDeviceMemoryPriorityEXT SetDeviceMemoryPriorityEXT;

@@ -1000,6 +1000,8 @@ VKAPI_ATTR void VKAPI_CALL loader_init_device_extension_dispatch_table(struct lo
 
     // ---- VK_JUICE_portability extension commands
     table->CreateBufferViewJUICE = (PFN_vkCreateBufferViewJUICE)gdpa(dev, "vkCreateBufferViewJUICE");
+    table->BindBufferViewJUICE = (PFN_vkBindBufferViewJUICE)gdpa(dev, "vkBindBufferViewJUICE");
+    table->BindImageViewJUICE = (PFN_vkBindImageViewJUICE)gdpa(dev, "vkBindImageViewJUICE");
 
     // ---- VK_EXT_pageable_device_local_memory extension commands
     table->SetDeviceMemoryPriorityEXT = (PFN_vkSetDeviceMemoryPriorityEXT)gdpa(dev, "vkSetDeviceMemoryPriorityEXT");
@@ -1949,6 +1951,8 @@ VKAPI_ATTR void* VKAPI_CALL loader_lookup_device_dispatch_table(const VkLayerDis
 
     // ---- VK_JUICE_portability extension commands
     if (!strcmp(name, "CreateBufferViewJUICE")) return (void *)table->CreateBufferViewJUICE;
+    if (!strcmp(name, "BindBufferViewJUICE")) return (void *)table->BindBufferViewJUICE;
+    if (!strcmp(name, "BindImageViewJUICE")) return (void *)table->BindImageViewJUICE;
 
     // ---- VK_EXT_pageable_device_local_memory extension commands
     if (!strcmp(name, "SetDeviceMemoryPriorityEXT")) return (void *)table->SetDeviceMemoryPriorityEXT;
@@ -6424,6 +6428,32 @@ VKAPI_ATTR void VKAPI_CALL CreateBufferViewJUICE(
     disp->CreateBufferViewJUICE(memory, pInfo);
 }
 
+VKAPI_ATTR void VKAPI_CALL BindBufferViewJUICE(
+    VkDeviceMemory                              memory,
+    const VkD3D12BindBufferViewInfoJUICE*       pInfo) {
+    const VkLayerDispatchTable *disp = loader_get_dispatch(memory);
+    if (NULL == disp) {
+        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+                   "vkBindBufferViewJUICE: Invalid memory "
+                   "[VUID-vkBindBufferViewJUICE-memory-parameter]");
+        abort(); /* Intentionally fail so user can correct issue. */
+    }
+    disp->BindBufferViewJUICE(memory, pInfo);
+}
+
+VKAPI_ATTR void VKAPI_CALL BindImageViewJUICE(
+    VkDeviceMemory                              memory,
+    const VkD3D12BindImageViewInfoJUICE*        pInfo) {
+    const VkLayerDispatchTable *disp = loader_get_dispatch(memory);
+    if (NULL == disp) {
+        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+                   "vkBindImageViewJUICE: Invalid memory "
+                   "[VUID-vkBindImageViewJUICE-memory-parameter]");
+        abort(); /* Intentionally fail so user can correct issue. */
+    }
+    disp->BindImageViewJUICE(memory, pInfo);
+}
+
 
 // ---- VK_EXT_pageable_device_local_memory extension trampoline/terminators
 
@@ -8169,6 +8199,14 @@ bool extension_instance_gpa(struct loader_instance *ptr_instance, const char *na
     // ---- VK_JUICE_portability extension commands
     if (!strcmp("vkCreateBufferViewJUICE", name)) {
         *addr = (void *)CreateBufferViewJUICE;
+        return true;
+    }
+    if (!strcmp("vkBindBufferViewJUICE", name)) {
+        *addr = (void *)BindBufferViewJUICE;
+        return true;
+    }
+    if (!strcmp("vkBindImageViewJUICE", name)) {
+        *addr = (void *)BindImageViewJUICE;
         return true;
     }
 
