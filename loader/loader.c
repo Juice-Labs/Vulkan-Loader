@@ -2914,7 +2914,9 @@ static VkResult read_data_files_in_search_paths(const struct loader_instance *in
     size_t search_path_size = 0;
     char *search_path = NULL;
     char *cur_path_ptr = NULL;
+#ifndef _WIN32
     size_t rel_size = 0;
+#endif
     bool use_first_found_manifest = false;
 #ifndef _WIN32
     bool xdg_config_home_secenv_alloc = true;
