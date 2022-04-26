@@ -261,9 +261,9 @@ else()
     set_target_properties(vulkan
                           PROPERTIES SOVERSION "1"
                           VERSION ${LOADER_GENERATED_HEADER_VERSION})
-    target_link_libraries(vulkan ${CMAKE_DL_LIBS} m)
+    target_link_libraries(vulkan PRIVATE ${CMAKE_DL_LIBS} m)
     if (NOT ANDROID)
-        target_link_libraries(vulkan Threads::Threads)
+        target_link_libraries(vulkan PRIVATE Threads::Threads)
     endif()
 
     if(APPLE)
