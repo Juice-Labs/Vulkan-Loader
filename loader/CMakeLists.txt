@@ -347,6 +347,9 @@ add_library(Vulkan::Vulkan ALIAS vulkan)
 install(TARGETS vulkan
         RUNTIME DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
 
+install(TARGETS vulkan
+        LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
+
 if(WIN32)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/vulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
