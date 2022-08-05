@@ -30,6 +30,8 @@
 
 #include "log.h"
 
+#define USE_UNSAFE_FILE_SEARCH
+
 // Environment variables
 #if defined(__linux__) || defined(__APPLE__) || defined(__Fuchsia__) || defined(__QNXNTO__) || defined(__FreeBSD__)
 
