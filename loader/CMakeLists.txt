@@ -345,7 +345,7 @@ target_link_libraries(vulkan PUBLIC Vulkan::Headers)
 add_library(Vulkan::Vulkan ALIAS vulkan)
 
 # Rename "vulkan-1" to "Juicevulkan-1" in ${CMAKE_INSTALL_CLIENT_PREFIX}
-# so that it is found when loaded by JuiceAppShim{64}.dll.
+# so that it is found when loaded by JuiceShim{64}.dll.
 add_custom_command(
     TARGET vulkan
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vulkan> ${CMAKE_INSTALL_CLIENT_PREFIX}/$<TARGET_FILE_PREFIX:vulkan>Juice$<TARGET_FILE_BASE_NAME:vulkan>$<TARGET_FILE_SUFFIX:vulkan>
