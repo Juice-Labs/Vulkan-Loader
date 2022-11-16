@@ -352,6 +352,9 @@ add_custom_command(
     COMMENT "Copying 'vulkan-1' to 'Juicevulkan-1'")
 
 install(TARGETS vulkan
+        LIBRARY DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
+
+install(TARGETS vulkan
         LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
 
 if(WIN32)
