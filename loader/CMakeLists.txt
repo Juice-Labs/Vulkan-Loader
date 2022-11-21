@@ -351,13 +351,22 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vulkan> ${CMAKE_INSTALL_CLIENT_PREFIX}/$<TARGET_FILE_PREFIX:vulkan>Juice$<TARGET_FILE_BASE_NAME:vulkan>$<TARGET_FILE_SUFFIX:vulkan>
     COMMENT "Copying 'vulkan-1' to 'Juicevulkan-1'")
 
-install(TARGETS vulkan
-        LIBRARY DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
-
-install(TARGETS vulkan
-        LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
-
 if(WIN32)
+    install(TARGETS vulkan
+            RUNTIME DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
+
+    install(TARGETS vulkan
+            RUNTIME DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
+
     install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
+
+else()
+
+    install(TARGETS vulkan
+            LIBRARY DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
+
+    install(TARGETS vulkan
+            LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
+
 endif()
