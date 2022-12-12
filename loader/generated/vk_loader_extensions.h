@@ -471,6 +471,9 @@ struct loader_icd_term_dispatch {
 #ifdef VK_USE_PLATFORM_SCREEN_QNX
     PFN_vkGetPhysicalDeviceScreenPresentationSupportQNX GetPhysicalDeviceScreenPresentationSupportQNX;
 #endif // VK_USE_PLATFORM_SCREEN_QNX
+
+    // ---- VK_JUICE_juda extension commands
+    PFN_vkGetJuiceClientJUICE GetJuiceClientJUICE;
 };
 
 union loader_instance_extension_enables {
