@@ -355,8 +355,9 @@ if(WIN32)
     install(TARGETS vulkan
             RUNTIME DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
 
-    install(TARGETS vulkan
-            RUNTIME DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
+    # Server is expected to have vulkan installed
+    #install(TARGETS vulkan
+    #        RUNTIME DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
 
     install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
@@ -366,7 +367,8 @@ else()
     install(TARGETS vulkan
             LIBRARY DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
 
-    install(TARGETS vulkan
-            LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
+    # Server is expected to have vulkan installed
+    #install(TARGETS vulkan
+    #        LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
 
 endif()
