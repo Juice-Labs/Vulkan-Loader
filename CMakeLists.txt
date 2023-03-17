@@ -262,7 +262,7 @@ target_compile_definitions(loader_common_options INTERFACE API_NAME="Vulkan")
 target_link_libraries(loader_common_options INTERFACE platform_wsi_defines)
 
 # Enable beta Vulkan extensions
-target_compile_definitions(loader_common_options INTERFACE VK_ENABLE_BETA_EXTENSIONS)
+# target_compile_definitions(loader_common_options INTERFACE VK_ENABLE_BETA_EXTENSIONS)
 
 target_compile_features(loader_common_options INTERFACE c_std_99)
 target_compile_features(loader_common_options INTERFACE cxx_std_11)
