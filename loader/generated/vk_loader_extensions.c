@@ -1002,10 +1002,6 @@ VKAPI_ATTR void VKAPI_CALL loader_init_device_extension_dispatch_table(struct lo
     table->CmdDrawMultiIndexedEXT = (PFN_vkCmdDrawMultiIndexedEXT)gdpa(dev, "vkCmdDrawMultiIndexedEXT");
 
     // ---- VK_JUICE_juda extension commands
-    table->CreateJudaModuleJUICE = (PFN_vkCreateJudaModuleJUICE)gdpa(dev, "vkCreateJudaModuleJUICE");
-    table->CreateJudaFunctionFromModuleJUICE = (PFN_vkCreateJudaFunctionFromModuleJUICE)gdpa(dev, "vkCreateJudaFunctionFromModuleJUICE");
-    table->LaunchJudaKernelJUICE = (PFN_vkLaunchJudaKernelJUICE)gdpa(dev, "vkLaunchJudaKernelJUICE");
-    table->DevicePtrRegisterJUICE = (PFN_vkDevicePtrRegisterJUICE)gdpa(dev, "vkDevicePtrRegisterJUICE");
     table->QueryValueJUICE = (PFN_vkQueryValueJUICE)gdpa(dev, "vkQueryValueJUICE");
 
     // ---- VK_JUICE_portability extension commands
@@ -1963,10 +1959,6 @@ VKAPI_ATTR void* VKAPI_CALL loader_lookup_device_dispatch_table(const VkLayerDis
     if (!strcmp(name, "CmdDrawMultiIndexedEXT")) return (void *)table->CmdDrawMultiIndexedEXT;
 
     // ---- VK_JUICE_juda extension commands
-    if (!strcmp(name, "CreateJudaModuleJUICE")) return (void *)table->CreateJudaModuleJUICE;
-    if (!strcmp(name, "CreateJudaFunctionFromModuleJUICE")) return (void *)table->CreateJudaFunctionFromModuleJUICE;
-    if (!strcmp(name, "LaunchJudaKernelJUICE")) return (void *)table->LaunchJudaKernelJUICE;
-    if (!strcmp(name, "DevicePtrRegisterJUICE")) return (void *)table->DevicePtrRegisterJUICE;
     if (!strcmp(name, "QueryValueJUICE")) return (void *)table->QueryValueJUICE;
 
     // ---- VK_JUICE_portability extension commands
@@ -6381,66 +6373,6 @@ VKAPI_ATTR void VKAPI_CALL CmdDrawMultiIndexedEXT(
 
 // ---- VK_JUICE_juda extension trampoline/terminators
 
-VKAPI_ATTR VkResult VKAPI_CALL CreateJudaModuleJUICE(
-    VkDevice                                    device,
-    const uint8_t*                              ptxData,
-    uint64_t                                    ptxDataSize,
-    uint64_t*                                   outModule) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkCreateJudaModuleJUICE: Invalid device "
-                   "[VUID-vkCreateJudaModuleJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->CreateJudaModuleJUICE(device, ptxData, ptxDataSize, outModule);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL CreateJudaFunctionFromModuleJUICE(
-    VkDevice                                    device,
-    uint64_t                                    module,
-    const uint8_t*                              funcNameData,
-    uint64_t                                    funcNameSize,
-    uint64_t*                                   outFunction,
-    uint32_t**                                  data,
-    uint32_t*                                   size) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkCreateJudaFunctionFromModuleJUICE: Invalid device "
-                   "[VUID-vkCreateJudaFunctionFromModuleJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->CreateJudaFunctionFromModuleJUICE(device, module, funcNameData, funcNameSize, outFunction, data, size);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL LaunchJudaKernelJUICE(
-    VkDevice                                    device,
-    const VkJudaKernelInvocationJUICE*          invocation) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkLaunchJudaKernelJUICE: Invalid device "
-                   "[VUID-vkLaunchJudaKernelJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->LaunchJudaKernelJUICE(device, invocation);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL DevicePtrRegisterJUICE(
-    VkDevice                                    device,
-    const VkJudaDevicePtrRegistrationJUICE*     devPtr,
-    void**                                      outDevPtr) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkDevicePtrRegisterJUICE: Invalid device "
-                   "[VUID-vkDevicePtrRegisterJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->DevicePtrRegisterJUICE(device, devPtr, outDevPtr);
-}
-
 VKAPI_ATTR uint64_t VKAPI_CALL QueryValueJUICE(
     VkDevice                                    device,
     VkJudaQueryValueJUICE*                      queryInfo,
@@ -8252,22 +8184,6 @@ bool extension_instance_gpa(struct loader_instance *ptr_instance, const char *na
     }
 
     // ---- VK_JUICE_juda extension commands
-    if (!strcmp("vkCreateJudaModuleJUICE", name)) {
-        *addr = (void *)CreateJudaModuleJUICE;
-        return true;
-    }
-    if (!strcmp("vkCreateJudaFunctionFromModuleJUICE", name)) {
-        *addr = (void *)CreateJudaFunctionFromModuleJUICE;
-        return true;
-    }
-    if (!strcmp("vkLaunchJudaKernelJUICE", name)) {
-        *addr = (void *)LaunchJudaKernelJUICE;
-        return true;
-    }
-    if (!strcmp("vkDevicePtrRegisterJUICE", name)) {
-        *addr = (void *)DevicePtrRegisterJUICE;
-        return true;
-    }
     if (!strcmp("vkQueryValueJUICE", name)) {
         *addr = (void *)QueryValueJUICE;
         return true;

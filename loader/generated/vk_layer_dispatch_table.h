@@ -942,10 +942,6 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdDrawMultiIndexedEXT CmdDrawMultiIndexedEXT;
 
     // ---- VK_JUICE_juda extension commands
-    PFN_vkCreateJudaModuleJUICE CreateJudaModuleJUICE;
-    PFN_vkCreateJudaFunctionFromModuleJUICE CreateJudaFunctionFromModuleJUICE;
-    PFN_vkLaunchJudaKernelJUICE LaunchJudaKernelJUICE;
-    PFN_vkDevicePtrRegisterJUICE DevicePtrRegisterJUICE;
     PFN_vkQueryValueJUICE QueryValueJUICE;
 
     // ---- VK_JUICE_portability extension commands
