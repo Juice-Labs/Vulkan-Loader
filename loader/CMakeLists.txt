@@ -239,7 +239,7 @@ if(WIN32)
     # msvc: vulkan-1.lib / vulkan-1.dll
     set_target_properties(vulkan
                           PROPERTIES
-                          OUTPUT_NAME vulkan-1)
+                          OUTPUT_NAME juicevulkan-1)
 
     if(MSVC AND ENABLE_WIN10_ONECORE)
         target_link_libraries(vulkan OneCoreUAP.lib LIBCMT.LIB LIBCMTD.LIB LIBVCRUNTIME.LIB LIBUCRT.LIB)
@@ -346,10 +346,10 @@ add_library(Vulkan::Vulkan ALIAS vulkan)
 
 # Rename "vulkan-1" to "Juicevulkan-1" in ${CMAKE_INSTALL_CLIENT_PREFIX}
 # so that it is found when loaded by JuiceShim{64}.dll.
-add_custom_command(
-    TARGET vulkan
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vulkan> ${CMAKE_INSTALL_CLIENT_PREFIX}/$<TARGET_FILE_PREFIX:vulkan>Juice$<TARGET_FILE_BASE_NAME:vulkan>$<TARGET_FILE_SUFFIX:vulkan>
-    COMMENT "Copying 'vulkan-1' to 'Juicevulkan-1'")
+#add_custom_command(
+#    TARGET vulkan
+#    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vulkan> ${CMAKE_INSTALL_CLIENT_PREFIX}/$<TARGET_FILE_PREFIX:vulkan>Juice$<TARGET_FILE_BASE_NAME:vulkan>$<TARGET_FILE_SUFFIX:vulkan>
+#    COMMENT "Copying 'vulkan-1' to 'Juicevulkan-1'")
 
 if(WIN32)
     install(TARGETS vulkan
@@ -359,7 +359,7 @@ if(WIN32)
     #install(TARGETS vulkan
     #        RUNTIME DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
 
-    install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vulkan-1.pdb
+    install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/juicevulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
 
 else()
