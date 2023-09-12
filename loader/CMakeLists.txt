@@ -346,11 +346,11 @@ add_library(Vulkan::Vulkan ALIAS vulkan)
 
 if(WIN32)
     install(TARGETS vulkan
-            RUNTIME DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
+            RUNTIME DESTINATION ${CMAKE_INSTALL_JUICE_GPU})
 
     install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/juicevulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
 else()
     install(TARGETS vulkan
-            LIBRARY DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
+            LIBRARY DESTINATION ${CMAKE_INSTALL_JUICE_GPU})
 endif()
