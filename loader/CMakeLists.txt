@@ -344,31 +344,13 @@ endif()
 target_link_libraries(vulkan PUBLIC Vulkan::Headers)
 add_library(Vulkan::Vulkan ALIAS vulkan)
 
-# Rename "vulkan-1" to "Juicevulkan-1" in ${CMAKE_INSTALL_CLIENT_PREFIX}
-# so that it is found when loaded by JuiceShim{64}.dll.
-#add_custom_command(
-#    TARGET vulkan
-#    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vulkan> ${CMAKE_INSTALL_CLIENT_PREFIX}/$<TARGET_FILE_PREFIX:vulkan>Juice$<TARGET_FILE_BASE_NAME:vulkan>$<TARGET_FILE_SUFFIX:vulkan>
-#    COMMENT "Copying 'vulkan-1' to 'Juicevulkan-1'")
-
 if(WIN32)
     install(TARGETS vulkan
             RUNTIME DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
 
-    # Server is expected to have vulkan installed
-    #install(TARGETS vulkan
-    #        RUNTIME DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
-
     install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/juicevulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
-
 else()
-
     install(TARGETS vulkan
             LIBRARY DESTINATION ${CMAKE_INSTALL_CLIENT_PREFIX})
-
-    # Server is expected to have vulkan installed
-    #install(TARGETS vulkan
-    #        LIBRARY DESTINATION ${CMAKE_INSTALL_SERVER_PREFIX})
-
 endif()
