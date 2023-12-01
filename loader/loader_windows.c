@@ -405,21 +405,21 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
     DWORD value_size = sizeof(value);
     VkResult result = VK_SUCCESS;
     bool found = false;
-    //IDXGIFactory1 *dxgi_factory = NULL;
+    IDXGIFactory1 *dxgi_factory = NULL;
     bool is_driver = !strcmp(location, VK_DRIVERS_INFO_REGISTRY_LOC);
     uint32_t log_target_flag = is_driver ? VULKAN_LOADER_DRIVER_BIT : VULKAN_LOADER_LAYER_BIT;
 
     assert(reg_data != NULL && "windows_get_registry_files: reg_data is a NULL pointer");
 
     if (is_driver) {
-        /*HRESULT hres = fpCreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&dxgi_factory);
+        HRESULT hres = fpCreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&dxgi_factory);
         if (hres != S_OK) {
             loader_log(inst, VULKAN_LOADER_WARN_BIT | log_target_flag, 0,
                        "windows_get_registry_files: Failed to create dxgi factory for ICD registry verification. No ICDs will be "
                        "added from "
                        "legacy registry locations");
             goto out;
-        }*/
+        }
     }
 
     while (*loc) {
@@ -474,7 +474,7 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
                             loader_log(inst, VULKAN_LOADER_INFO_BIT | log_target_flag, 0,
                                        "Driver %s is not recognized as a known driver. It will be assumed to be active", name);
                         } else {
-                            /*bool found_gpu = false;
+                            bool found_gpu = false;
                             for (int j = 0;; ++j) {
                                 IDXGIAdapter1 *adapter;
                                 HRESULT hres = dxgi_factory->lpVtbl->EnumAdapters1(dxgi_factory, j, &adapter);
@@ -507,7 +507,7 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
                                 loader_log(inst, VULKAN_LOADER_INFO_BIT | log_target_flag, 0,
                                            "Dropping driver %s as no corresponding DXGI adapter was found", name);
                                 continue;
-                            }*/
+                            }
                         }
                     }
 
@@ -564,9 +564,9 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
     }
 
 out:
-    /*if (is_driver && dxgi_factory != NULL) {
+    if (is_driver && dxgi_factory != NULL) {
         dxgi_factory->lpVtbl->Release(dxgi_factory);
-    }*/
+    }
 
     return result;
 }
@@ -1008,12 +1008,12 @@ out:
 
 VkLoaderFeatureFlags windows_initialize_dxgi(void) {
     VkLoaderFeatureFlags feature_flags = 0;
-    /*IDXGIFactory6 *dxgi_factory = NULL;
+    IDXGIFactory6 *dxgi_factory = NULL;
     HRESULT hres = fpCreateDXGIFactory1(&IID_IDXGIFactory6, (void **)&dxgi_factory);
     if (hres == S_OK) {
         feature_flags |= VK_LOADER_FEATURE_PHYSICAL_DEVICE_SORTING;
         dxgi_factory->lpVtbl->Release(dxgi_factory);
-    }*/
+    }
     return feature_flags;
 }
 
