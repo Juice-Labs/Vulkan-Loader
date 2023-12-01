@@ -1008,12 +1008,12 @@ out:
 
 VkLoaderFeatureFlags windows_initialize_dxgi(void) {
     VkLoaderFeatureFlags feature_flags = 0;
-    IDXGIFactory6 *dxgi_factory = NULL;
+    /*IDXGIFactory6 *dxgi_factory = NULL;
     HRESULT hres = fpCreateDXGIFactory1(&IID_IDXGIFactory6, (void **)&dxgi_factory);
     if (hres == S_OK) {
         feature_flags |= VK_LOADER_FEATURE_PHYSICAL_DEVICE_SORTING;
         dxgi_factory->lpVtbl->Release(dxgi_factory);
-    }
+    }*/
     return feature_flags;
 }
 
