@@ -252,7 +252,7 @@ void *trampoline_get_proc_addr(struct loader_instance *inst, const char *funcNam
 
     // Instance extensions
     void *addr;
-    if (debug_utils_InstanceGpa(inst, funcName, &addr)) return addr;
+    if (debug_extensions_InstanceGpa(inst, funcName, &addr)) return addr;
 
     if (wsi_swapchain_instance_gpa(inst, funcName, &addr)) return addr;
 
@@ -263,7 +263,7 @@ void *trampoline_get_proc_addr(struct loader_instance *inst, const char *funcNam
     if (NULL != addr) return addr;
 
     // Unknown device extensions
-    addr = loader_dev_ext_gpa(inst, funcName);
+    addr = loader_dev_ext_gpa_tramp(inst, funcName);
     return addr;
 }
 
@@ -275,20 +275,6 @@ void *globalGetProcAddr(const char *name) {
     if (!strcmp(name, "EnumerateInstanceExtensionProperties")) return vkEnumerateInstanceExtensionProperties;
     if (!strcmp(name, "EnumerateInstanceLayerProperties")) return vkEnumerateInstanceLayerProperties;
     if (!strcmp(name, "EnumerateInstanceVersion")) return vkEnumerateInstanceVersion;
-
-    return NULL;
-}
-
-void *loader_non_passthrough_gdpa(const char *name) {
-    if (!name || name[0] != 'v' || name[1] != 'k') return NULL;
-
-    name += 2;
-
-    if (!strcmp(name, "GetDeviceProcAddr")) return vkGetDeviceProcAddr;
-    if (!strcmp(name, "DestroyDevice")) return vkDestroyDevice;
-    if (!strcmp(name, "GetDeviceQueue")) return vkGetDeviceQueue;
-    if (!strcmp(name, "GetDeviceQueue2")) return vkGetDeviceQueue2;
-    if (!strcmp(name, "AllocateCommandBuffers")) return vkAllocateCommandBuffers;
 
     return NULL;
 }

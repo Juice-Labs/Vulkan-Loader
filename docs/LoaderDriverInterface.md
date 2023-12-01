@@ -4,21 +4,25 @@
 [1]: https://vulkan.lunarg.com/img/Vulkan_100px_Dec16.png "https://www.khronos.org/vulkan/"
 [2]: https://www.khronos.org/vulkan/
 
-# Driver interface to the Vulkan Loader
+# Driver interface to the Vulkan Loader <!-- omit from toc -->
 [![Creative Commons][3]][4]
 
-<!-- Copyright &copy; 2015-2021 LunarG, Inc. -->
+<!-- Copyright &copy; 2015-2023 LunarG, Inc. -->
 
 [3]: https://i.creativecommons.org/l/by-nd/4.0/88x31.png "Creative Commons License"
 [4]: https://creativecommons.org/licenses/by-nd/4.0/
 
 
-## Table of Contents
+## Table of Contents <!-- omit from toc -->
 
 - [Overview](#overview)
 - [Driver Discovery](#driver-discovery)
   - [Overriding the Default Driver Discovery](#overriding-the-default-driver-discovery)
-    - [Exception for Elevated Privileges](#exception-for-elevated-privileges)
+  - [Additional Driver Discovery](#additional-driver-discovery)
+  - [Driver Filtering](#driver-filtering)
+    - [Driver Select Filtering](#driver-select-filtering)
+    - [Driver Disable Filtering](#driver-disable-filtering)
+  - [Exception for Elevated Privileges](#exception-for-elevated-privileges)
     - [Examples](#examples)
       - [On Windows](#on-windows)
       - [On Linux](#on-linux)
@@ -31,37 +35,46 @@
   - [Driver Discovery on macOS](#driver-discovery-on-macos)
     - [Example macOS Driver Search Path](#example-macos-driver-search-path)
     - [Additional Settings For Driver Debugging](#additional-settings-for-driver-debugging)
+  - [Driver Discovery using the`VK_LUNARG_direct_driver_loading` extension](#driver-discovery-using-thevk_lunarg_direct_driver_loading-extension)
+    - [How to use `VK_LUNARG_direct_driver_loading`](#how-to-use-vk_lunarg_direct_driver_loading)
+    - [Interactions with other driver discovery mechanisms](#interactions-with-other-driver-discovery-mechanisms)
+    - [Limitations of `VK_LUNARG_direct_driver_loading`](#limitations-of-vk_lunarg_direct_driver_loading)
   - [Using Pre-Production ICDs or Software Drivers](#using-pre-production-icds-or-software-drivers)
   - [Driver Discovery on Android](#driver-discovery-on-android)
 - [Driver Manifest File Format](#driver-manifest-file-format)
-    - [Driver Manifest File Versions](#driver-manifest-file-versions)
+  - [Driver Manifest File Versions](#driver-manifest-file-versions)
     - [Driver Manifest File Version 1.0.0](#driver-manifest-file-version-100)
+    - [Driver Manifest File Version 1.0.1](#driver-manifest-file-version-101)
 - [Driver Vulkan Entry Point Discovery](#driver-vulkan-entry-point-discovery)
 - [Driver API Version](#driver-api-version)
 - [Mixed Driver Instance Extension Support](#mixed-driver-instance-extension-support)
   - [Filtering Out Instance Extension Names](#filtering-out-instance-extension-names)
   - [Loader Instance Extension Emulation Support](#loader-instance-extension-emulation-support)
 - [Driver Unknown Physical Device Extensions](#driver-unknown-physical-device-extensions)
+  - [Reason for adding `vk_icdGetPhysicalDeviceProcAddr`](#reason-for-adding-vk_icdgetphysicaldeviceprocaddr)
 - [Physical Device Sorting](#physical-device-sorting)
 - [Driver Dispatchable Object Creation](#driver-dispatchable-object-creation)
 - [Handling KHR Surface Objects in WSI Extensions](#handling-khr-surface-objects-in-wsi-extensions)
 - [Loader and Driver Interface Negotiation](#loader-and-driver-interface-negotiation)
   - [Windows, Linux and macOS Driver Negotiation](#windows-linux-and-macos-driver-negotiation)
-    - [Version Negotiation Between Loader and Drivers](#version-negotiation-between-loader-and-drivers)
+    - [Version Negotiation Between the Loader and Drivers](#version-negotiation-between-the-loader-and-drivers)
     - [Interfacing With Legacy Drivers or Loaders](#interfacing-with-legacy-drivers-or-loaders)
-    - [Loader Version 6 Interface Requirements](#loader-version-6-interface-requirements)
-    - [Loader Version 5 Interface Requirements](#loader-version-5-interface-requirements)
-    - [Loader Version 4 Interface Requirements](#loader-version-4-interface-requirements)
-    - [Loader Version 3 Interface Requirements](#loader-version-3-interface-requirements)
-    - [Loader Version 2 Interface Requirements](#loader-version-2-interface-requirements)
-    - [Loader Version 1 Interface Requirements](#loader-version-1-interface-requirements)
-    - [Loader Version 0 Interface Requirements](#loader-version-0-interface-requirements)
+    - [Loader and Driver Interface Version 7 Requirements](#loader-and-driver-interface-version-7-requirements)
+    - [Loader and Driver Interface Version 6 Requirements](#loader-and-driver-interface-version-6-requirements)
+    - [Loader and Driver Interface Version 5 Requirements](#loader-and-driver-interface-version-5-requirements)
+    - [Loader and Driver Interface Version 4 Requirements](#loader-and-driver-interface-version-4-requirements)
+    - [Loader and Driver Interface Version 3 Requirements](#loader-and-driver-interface-version-3-requirements)
+    - [Loader and Driver Interface Version 2 Requirements](#loader-and-driver-interface-version-2-requirements)
+    - [Loader and Driver Interface Version 1 Requirements](#loader-and-driver-interface-version-1-requirements)
+    - [Loader and Driver Interface Version 0 Requirements](#loader-and-driver-interface-version-0-requirements)
     - [Additional Interface Notes:](#additional-interface-notes)
   - [Android Driver Negotiation](#android-driver-negotiation)
+- [Loader implementation of VK\_KHR\_portability\_enumeration](#loader-implementation-of-vk_khr_portability_enumeration)
 - [Loader and Driver Policy](#loader-and-driver-policy)
   - [Number Format](#number-format)
   - [Android Differences](#android-differences)
   - [Requirements of Well-Behaved Drivers](#requirements-of-well-behaved-drivers)
+    - [Removed Driver Policies](#removed-driver-policies)
   - [Requirements of a Well-Behaved Loader](#requirements-of-a-well-behaved-loader)
 
 
@@ -107,8 +120,9 @@ If both `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` environment variables are
 present, then the newer `VK_DRIVER_FILES` will be used, and the values in
 `VK_ICD_FILENAMES` will be ignored.
 
-The `VK_DRIVER_FILES` environment variable is a list of Driver Manifest
-files, containing the full path to the driver JSON Manifest file.
+The `VK_DRIVER_FILES` environment variable is a list of paths to Driver Manifest
+files, containing the full path to the driver JSON Manifest file, and/or paths
+to folders containing Driver Manifest files.
 This list is colon-separated on Linux and macOS, and semicolon-separated on
 Windows.
 Typically, `VK_DRIVER_FILES` will only contain a full pathname to one info
@@ -121,7 +135,8 @@ There may be times that a developer wishes to force the loader to use a specific
 Driver in addition to the standard drivers (without replacing the standard
 search paths.
 The `VK_ADD_DRIVER_FILES` environment variable can be used to add a list of
-Driver Manifest files, containing the full path to the driver JSON Manifest file.
+Driver Manifest files, containing the full path to the driver JSON Manifest
+file, and/or paths to folders containing Driver Manifest files.
 This list is colon-separated on Linux and macOS, and semicolon-separated on
 Windows.
 It will be added prior to the standard driver search files.
@@ -129,18 +144,72 @@ If `VK_DRIVER_FILES` or `VK_ICD_FILENAMES` is present, then
 `VK_ADD_DRIVER_FILES` will not be used by the loader and any values will be
 ignored.
 
-#### Exception for Elevated Privileges
+### Driver Filtering
 
-For security reasons, `VK_ICD_FILENAMES`, `VK_DRIVER_FILES` and
-`VK_ADD_DRIVER_FILES` are all ignored if running the Vulkan application with
-elevated privileges.
+**NOTE:** This functionality is only available with Loaders built with version
+1.3.234 of the Vulkan headers and later.
+
+The loader supports filter environment variables which can forcibly select and
+disable known drivers.
+Known driver manifests are those files that are already found by the loader
+taking into account default search paths and other environment variables (like
+`VK_ICD_FILENAMES` or `VK_ADD_DRIVER_FILES`).
+
+The filter variables will be compared against the driver's manifest filename.
+
+The filters must also follow the behaviors define in the
+[Filter Environment Variable Behaviors](LoaderInterfaceArchitecture.md#filter-environment-variable-behaviors)
+section of the [LoaderLayerInterface](LoaderLayerInterface.md) document.
+
+#### Driver Select Filtering
+
+The driver select environment variable `VK_LOADER_DRIVERS_SELECT` is a
+comma-delimited list of globs to search for in known drivers.
+
+If a driver is not selected when using the `VK_LOADER_DRIVERS_SELECT` filter,
+and loader logging is set to emit either warnings or driver messages, then a
+message will show for each driver that has been ignored.
+This message will look like the following:
+
+```
+WARNING | DRIVER: Driver "intel_icd.x86_64.json" ignored because not selected by env var 'VK_LOADER_DRIVERS_SELECT'
+```
+
+If no drivers are found with a manifest filename that matches any of the
+provided globs, then no driver is enabled and may result in failures for
+any Vulkan application that is run.
+
+#### Driver Disable Filtering
+
+The driver disable environment variable `VK_LOADER_DRIVERS_DISABLE` is a
+comma-delimited list of globs to search for in known drivers.
+
+When a driver is disabled using the `VK_LOADER_DRIVERS_DISABLE` filter, and
+loader logging is set to emit either warnings or driver messages, then a message
+will show for each driver that has been forcibly disabled.
+This message will look like the following:
+
+```
+WARNING | DRIVER: Driver "radeon_icd.x86_64.json" ignored because it was disabled by env var 'VK_LOADER_DRIVERS_DISABLE'
+```
+
+If no drivers are found with a manifest filename that matches any of the
+provided globs, then no driver is disabled.
+
+### Exception for Elevated Privileges
+
+For security reasons, `VK_ICD_FILENAMES`, `VK_DRIVER_FILES`, and
+`VK_ADD_DRIVER_FILES` are all ignored if running the Vulkan application
+with elevated privileges.
+This is because they may insert new libraries into the executable process that
+are not normally found by the loader.
 Because of this, these environment variables can only be used for applications
 that do not use elevated privileges.
 
 For more information see
 [Elevated Privilege Caveats](LoaderInterfaceArchitecture.md#elevated-privilege-caveats)
 in the top-level
-[LoaderInterfaceArchitecture.md][LoaderInterfaceArchitecture.md] document.
+[LoaderInterfaceArchitecture.md](LoaderInterfaceArchitecture.md) document.
 
 #### Examples
 
@@ -275,16 +344,23 @@ For example, let us assume the registry contains the following data:
 ```
 [HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\Drivers\]
 
-"C:\vendor a\vk_vendora.json"=dword:00000000
-"C:\windows\system32\vendorb_vk.json"=dword:00000001
-"C:\windows\system32\vendorc_icd.json"=dword:00000000
+"C:\vendor a\vk_vendor_a.json"=dword:00000000
+"C:\windows\system32\vendor_b_vk.json"=dword:00000001
+"C:\windows\system32\vendor_c_icd.json"=dword:00000000
 ```
 
 In this case, the loader will step through each entry, and check the value.
 If the value is 0, then the loader will attempt to load the file.
 In this case, the loader will open the first and last listings, but not the
 middle.
-This is because the value of 1 for vendorb_vk.json disables the driver.
+This is because the value of 1 for vendor_b_vk.json disables the driver.
+
+Additionally, the Vulkan loader will scan the system for well-known Windows
+AppX/MSIX packages.
+If a package is found, the loader will scan the root directory of this installed
+package for JSON manifest files. At this time, the only package that is known is
+Microsoft's
+[OpenCL™ and OpenGL® Compatibility Pack](https://apps.microsoft.com/store/detail/9NQPSL29BFFF?hl=en-us&gl=US).
 
 The Vulkan loader will open each enabled manifest file found to obtain the name
 or pathname of a driver's shared library (".DLL") file.
@@ -375,7 +451,7 @@ The loader then selects each path, and applies the "/vulkan/icd.d" suffix onto
 each and looks in that specific folder for manifest files.
 
 The Vulkan loader will open each manifest file found to obtain the name or
-pathname of a driver's shared library (".dylib") file.
+pathname of a driver's shared library (".so") file.
 
 **NOTE** While the order of folders searched for manifest files is well
 defined, the order contents are read by the loader in each directory is
@@ -436,6 +512,17 @@ The order is similar to the search path on Linux with the exception that
 the application's bundle resources are searched first:
 `(bundle)/Contents/Resources/`.
 
+System installed drivers will be ignored if drivers are found inside of the app
+bundle.
+This is because there is not a standard mechanism in which to distinguish drivers
+that happen to be duplicates.
+For example, MoltenVK is commonly placed inside application bundles.
+If there exists a system installed MoltenVK, the loader will load both the app
+bundled and the system installed MoltenVK, leading to potential issues or crashes.
+Drivers found through environment variables, such as `VK_DRIVER_FILES`, will be
+used regardless of whether there are bundled drivers present or not.
+
+
 #### Example macOS Driver Search Path
 
 For a fictional user "Me" the Driver Manifest search path might look
@@ -463,6 +550,117 @@ If there is a problem with a driver missing symbols on the current system, this
 will expose it and cause the Vulkan loader to fail on loading the driver.
 It is recommended that `LD_BIND_NOW` along with `VK_LOADER_DEBUG=error,warn`
 to expose any issues.
+
+### Driver Discovery using the`VK_LUNARG_direct_driver_loading` extension
+
+The `VK_LUNARG_direct_driver_loading` extension allows for applications to
+provide a driver or drivers to the Loader during vkCreateInstance.
+This allows drivers to be included with an application without requiring
+installation and is capable of being used in any execution environment, such as
+a process running with elevated privileges.
+
+When calling `vkEnumeratePhysicalDevices` with the
+`VK_LUNARG_direct_driver_loading` extension enabled, the `VkPhysicalDevice`s
+from system installed drivers and environment variable specified drivers will
+appear before any `VkPhysicalDevice`s that originate from drivers from the
+`VkDirectDriverLoadingListLUNARG::pDrivers` list.
+
+#### How to use `VK_LUNARG_direct_driver_loading`
+
+To use this extension, it must first be enabled on the VkInstance.
+This requires enabling the `VK_LUNARG_direct_driver_loading` extension through
+the `enabledExtensionCount` and `ppEnabledExtensionNames`members of
+`VkInstanceCreateInfo`.
+
+```c
+const char* extensions[] = {VK_LUNARG_DIRECT_DRIVER_LOADING_EXTENSION_NAME, <other extensions>};
+VkInstanceCreateInfo instance_create_info = {};
+instance_create_info.enabledExtensionCount = <size of extension list>;
+instance_create_info.ppEnabledExtensionNames = extensions;
+```
+
+The `VkDirectDriverLoadingInfoLUNARG` structure contains a
+`VkDirectDriverLoadingFlagsLUNARG` member (reserved for future use) and a
+`PFN_vkGetInstanceProcAddrLUNARG` member which provides the loader with the
+function pointer for the driver's `vkGetInstanceProcAddr`.
+
+The `VkDirectDriverLoadingListLUNARG` structure contains a count and pointer
+members which provide the size of and pointer to an application provided array of
+`VkDirectDriverLoadingInfoLUNARG` structures.
+
+Creating those structures looks like the following
+```c
+VkDirectDriverLoadingInfoLUNARG direct_loading_info = {};
+direct_loading_info.sType = VK_STRUCTURE_TYPE_DIRECT_DRIVER_LOADING_INFO_LUNARG
+direct_loading_info.pfnGetInstanceProcAddr = <put the PFN_vkGetInstanceProcAddr of the driver here>
+
+VkDirectDriverLoadingListLUNARG direct_driver_list = {};
+direct_driver_list.sType = VK_STRUCTURE_TYPE_DIRECT_DRIVER_LOADING_LIST_LUNARG;
+direct_driver_list.mode = VK_DIRECT_DRIVER_LOADING_MODE_INCLUSIVE_LUNARG; // or VK_DIRECT_DRIVER_LOADING_MODE_EXCLUSIVE_LUNARG
+direct_driver_list.driverCount = 1;
+direct_driver_list.pDrivers = &direct_loading_info; // can include multiple drivers here if so desired
+```
+
+The `VkDirectDriverLoadingListLUNARG` structure contains the enum
+`VkDirectDriverLoadingModeLUNARG`.
+There are two modes:
+* `VK_DIRECT_DRIVER_LOADING_MODE_EXCLUSIVE_LUNARG` - specifies that the only drivers
+to be loaded will come from the `VkDirectDriverLoadingListLUNARG` structure.
+* `VK_DIRECT_DRIVER_LOADING_MODE_INCLUSIVE_LUNARG` - specifies that drivers
+from the `VkDirectDriverLoadingModeLUNARG` structure will be used in addition to
+any system installed drivers and environment variable specified drivers.
+
+
+
+Then, the `VkDirectDriverLoadingListLUNARG` structure *must* be appended to the
+`pNext` chain of `VkInstanceCreateInfo`.
+
+```c
+instance_create_info.pNext = (const void*)&direct_driver_list;
+```
+
+Finally, create the instance like normal.
+
+#### Interactions with other driver discovery mechanisms
+
+If the `VK_DIRECT_DRIVER_LOADING_MODE_EXCLUSIVE_LUNARG` mode is specified in the
+`VkDirectDriverLoadingListLUNARG` structure, then no system installed drivers
+are loaded.
+This applies equally to all platforms.
+Additionally, the following environment variables have no effect:
+
+* `VK_DRIVER_FILES`
+* `VK_ICD_FILENAMES`
+* `VK_ADD_DRIVER_FILES`
+* `VK_LOADER_DRIVERS_SELECT`
+* `VK_LOADER_DRIVERS_DISABLE`
+
+Exclusive mode will also disable MacOS bundle manifest discovery of drivers.
+
+#### Limitations of `VK_LUNARG_direct_driver_loading`
+
+Because `VkDirectDriverLoadingListLUNARG` is provided to the loader at instance
+creation, there is no mechanism for the loader to query the list of instance
+extensions that originate from `VkDirectDriverLoadingListLUNARG` drivers during
+`vkEnumerateInstanceExtensionProperties`.
+Applications can instead manually load the `vkEnumerateInstanceExtensionProperties`
+function pointer directly from the drivers the application provides to the loader
+using the `pfnGetInstanceProcAddrLUNARG` for each driver.
+Then the application can call each driver's
+`vkEnumerateInstanceExtensionProperties` and append non-duplicate entriees to the
+list from the loader's `vkEnumerateInstanceExtensionProperties` to get the full
+list of supported instance extensions.
+Alternatively, because the Application is providing drivers, it is reasonable for
+the application to already know which instance extensions are available with the
+provided drivers, preventing the need to manually query them.
+
+However, there are limitations.
+If there are any active implicit layers which intercept
+`vkEnumerateInstanceExtensionProperties` to remove unsupported extensions, then
+those layers will not be able to remove unsupported extensions from drivers that
+are provided by the application.
+This is due to `vkEnumerateInstanceExtensionProperties` not having a mechanism
+to extend it.
 
 
 ### Using Pre-Production ICDs or Software Drivers
@@ -499,19 +697,21 @@ The loader will load the driver via `hw_get_module` with the ID of "vulkan".
 
 ## Driver Manifest File Format
 
-The following section discusses the details of the Driver Manifest JSON
-file format.
+The following section discusses the details of the Driver Manifest JSON file
+format.
 The JSON file itself does not have any requirements for naming.
 The only requirement is that the extension suffix of the file is ".json".
 
 Here is an example driver JSON Manifest file:
 
-```
+```json
 {
-   "file_format_version": "1.0.0",
+   "file_format_version": "1.0.1",
    "ICD": {
       "library_path": "path to driver library",
-      "api_version": "1.0.5"
+      "api_version": "1.2.205",
+      "library_arch" : "64",
+      "is_portability_driver": false
    }
 }
 ```
@@ -524,7 +724,7 @@ Here is an example driver JSON Manifest file:
   <tr>
     <td>"file_format_version"</td>
     <td>The JSON format major.minor.patch version number of this file.<br/>
-        Currently supported version is 1.0.0.</td>
+        Supported versions are: 1.0.0 and 1.0.1.</td>
   </tr>
   <tr>
     <td>"ICD"</td>
@@ -546,10 +746,30 @@ Here is an example driver JSON Manifest file:
         Windows, ".so" on Linux and ".dylib" on macOS).</td>
   </tr>
   <tr>
+    <td>"library_arch"</td>
+    <td>Optional field which specifies the architecture of the binary associated
+        with "library_path". <br />
+        Allows the loader to quickly determine if the architecture of the driver
+        matches that of the running application. <br />
+        The only valid values are "32" and "64".</td>
+  </tr>
+  <tr>
     <td>"api_version" </td>
-    <td>The major.minor.patch version number of the Vulkan API that the shared
-        library files for the driver was built against.<br/>
+    <td>The major.minor.patch version number of the maximum Vulkan API supported
+        by the driver.
+        However, just because the driver supports the specific Vulkan API
+        version, it does not guarantee that the hardware on a user's system can
+        support that version.
+        Information on what the underlying physical device can support must be
+        queried by the user using the <i>vkGetPhysicalDeviceProperties</i> API
+        call.<br/>
         For example: 1.0.33.</td>
+  </tr>
+  <tr>
+    <td>"is_portability_driver" </td>
+    <td>Defines whether the driver contains any VkPhysicalDevices which
+        implement the VK_KHR_portability_subset extension.<br/>
+    </td>
   </tr>
 </table>
 
@@ -557,10 +777,10 @@ Here is an example driver JSON Manifest file:
 versions of text manifest file format versions, it must have separate JSON files
 for each (all of which may point to the same shared library).
 
-#### Driver Manifest File Versions
+### Driver Manifest File Versions
 
-There has only been one version of the Driver Manifest files supported.
-This is version 1.0.0.
+The current highest supported Layer Manifest file format supported is 1.0.1.
+Information about each version is detailed in the following sub-sections:
 
 #### Driver Manifest File Version 1.0.0
 
@@ -572,6 +792,16 @@ The fields supported in version 1.0.0 of the file format include:
  * "library\_path"
  * "api\_version"
 
+#### Driver Manifest File Version 1.0.1
+
+Added the `is_portability_driver` boolean field for drivers to self report that
+they contain VkPhysicalDevices which support the VK_KHR_portability_subset
+extension. This is an optional field. Omitting the field has the same effect as
+setting the field to `false`.
+
+Added the "library\_arch" field to the driver manifest to allow the loader to
+quickly determine if the driver matches the architecture of the current running
+application. This field is optional.
 
 ##  Driver Vulkan Entry Point Discovery
 
@@ -699,32 +929,18 @@ missing support for this extension.
 
 ## Driver Unknown Physical Device Extensions
 
-Originally, when the loader's `vkGetInstanceProcAddr` was called, it would
-result in the following behavior:
- 1. The loader would check if it was a core function:
-    - If so, it would return the function pointer
- 2. The loader would check if it was a known extension function:
-    - If so, it would return the function pointer
- 3. If the loader knew nothing about it, it would call down using
-`GetInstanceProcAddr`
-    - If it returned `non-NULL`, treat it as an unknown logical device command.
-    - This meant setting up a generic trampoline function that takes in a
-VkDevice as the first parameter and adjusting the dispatch table to call the
-driver/layer's function after getting the dispatch table from the
-`VkDevice`.
- 4. If all the above failed, the loader would return `NULL` to the application.
-
-This caused problems when a driver attempted to expose new physical device
-extensions the loader knew nothing about, but an application was aware of.
-Because the loader knew nothing about it, the loader would get to step 3 in the
-above process and would treat the function as an unknown logical device command.
-The problem is, this would create a generic `VkDevice` trampoline function
-which, on the first call, would attempt to dereference the VkPhysicalDevice as a
-`VkDevice`.
-This would lead to a crash or corruption.
-
-In order to identify the extension entry points specific to physical device
-extensions, the following function can be added to a driver:
+Drivers that implement entrypoints which take a `VkPhysicalDevice` as the first
+parameter *should* support `vk_icdGetPhysicalDeviceProcAddr`.
+This function is added to the Loader and Driver Driver Interface Version 4,
+allowing the loader to distinguish between entrypoints which take `VkDevice`
+and `VkPhysicalDevice` as the first parameter.
+This allows the loader to properly support entrypoints that are unknown to it
+gracefully.
+This entry point is not a part of the Vulkan API itself, only a private
+interface between the loader and drivers.
+Note: Loader and Driver Interface Version 7 makes exporting
+`vk_icdGetPhysicalDeviceProcAddr` optional.
+Instead, drivers *must* expose it through `vk_icdGetInstanceProcAddr`.
 
 ```cpp
 PFN_vkVoidFunction
@@ -739,25 +955,32 @@ extension entry points.
 In this way, it compares "pName" to every physical device function supported in
 the driver.
 
-The following rules apply:
-* If `pName` is the name of a Vulkan API entrypoint that takes a `VkPhysicalDevice`
-  as its primary dispatch handle, and the driver supports the entrypoint, then
-  the driver **must** return the valid function pointer to the driver's
-  implementation of that entrypoint.
-* If `pName` is the name of a Vulkan API entrypoint that takes something other than
-  a `VkPhysicalDevice` as its primary dispatch handle, then the driver **must**
-  return `NULL`.
+Implementations of the function should have the following behavior:
+* If `pName` is the name of a Vulkan API entrypoint that takes a
+  `VkPhysicalDevice` as its primary dispatch handle, and the driver supports the
+  entrypoint, then the driver **must** return the valid function pointer to the
+  driver's implementation of that entrypoint.
+* If `pName` is the name of a Vulkan API entrypoint that takes something other
+  than a `VkPhysicalDevice` as its primary dispatch handle, then the driver
+  **must** return `NULL`.
 * If the driver is unaware of any entrypoint with the name `pName`, it **must**
   return `NULL`.
 
-This support is optional and should not be considered a requirement.
-This is only required if a driver intends to support some functionality not
-directly supported by a significant population of loaders in the public.
+If a driver intends to support functions that take VkPhysicalDevice as the
+dispatchable parameter, then the driver should support
+`vk_icdGetPhysicalDeviceProcAddr`. This is because if these functions aren't
+known to the loader, such as those from unreleased extensions or because
+the loader is an older build thus doesn't know about them _yet_, the loader
+won't be able to distinguish whether this is a device or physical device
+function.
+
 If a driver does implement this support, it must export the function from the
 driver library using the name `vk_icdGetPhysicalDeviceProcAddr` so that the
-symbol can be located through the platform's dynamic linking utilities.
+symbol can be located through the platform's dynamic linking utilities, or if
+the driver supports Loader and Driver Interface Version 7, exposed through
+`vk_icdGetInstanceProcAddr` instead.
 
-The new behavior of the loader's vkGetInstanceProcAddr with support for the
+The behavior of the loader's `vkGetInstanceProcAddr` with support for the
 `vk_icdGetPhysicalDeviceProcAddr` function is as follows:
  1. Check if core function:
     - If it is, return the function pointer
@@ -784,6 +1007,31 @@ However, the driver should continue to support the command query via
 `vk_icdGetPhysicalDeviceProcAddr`, until at least a Vulkan version bump, because
 an older loader may still be attempting to use the commands.
 
+### Reason for adding `vk_icdGetPhysicalDeviceProcAddr`
+
+Originally, when the loader's `vkGetInstanceProcAddr` was called, it would
+result in the following behavior:
+ 1. The loader would check if it was a core function:
+    - If so, it would return the function pointer
+ 2. The loader would check if it was a known extension function:
+    - If so, it would return the function pointer
+ 3. If the loader knew nothing about it, it would call down using
+`GetInstanceProcAddr`
+    - If it returned `non-NULL`, treat it as an unknown logical device command.
+    - This meant setting up a generic trampoline function that takes in a
+VkDevice as the first parameter and adjusting the dispatch table to call the
+driver/layer's function after getting the dispatch table from the
+`VkDevice`.
+ 4. If all the above failed, the loader would return `NULL` to the application.
+
+This caused problems when a driver attempted to expose new physical device
+extensions the loader knew nothing about, but an application was aware of.
+Because the loader knew nothing about it, the loader would get to step 3 in the
+above process and would treat the function as an unknown logical device command.
+The problem is, this would create a generic `VkDevice` trampoline function
+which, on the first call, would attempt to dereference the VkPhysicalDevice as a
+`VkDevice`.
+This would lead to a crash or corruption.
 
 ## Physical Device Sorting
 
@@ -796,10 +1044,15 @@ preference will be listed first.
 This mechanism does not force an application to use any particular GPU &mdash;
 it merely changes the order in which they are presented.
 
-This mechanism requires that a driver provide version 6 of the loader/driver
-interface.
-Version 6 of this interface defines a new exported function that the driver may
-provide on Windows:
+This mechanism requires that a driver provide The Loader and Driver Interface
+Version 6.
+This version defines a new exported function, `vk_icdEnumerateAdapterPhysicalDevices`,
+detailed below, that Drivers may provide on Windows.
+This entry point is not a part of the Vulkan API itself, only a private
+interface between the loader and drivers.
+Note: Loader and Driver Interface Version 7 makes exporting
+`vk_icdEnumerateAdapterPhysicalDevices` optional.
+Instead, drivers *must* expose it through `vk_icdGetInstanceProcAddr`.
 
 ```c
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -809,6 +1062,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
       uint32_t* pPhysicalDeviceCount,
       VkPhysicalDevice* pPhysicalDevices);
 ```
+
 
 This function takes an adapter LUID as input, and enumerates all Vulkan physical
 devices that are associated with that LUID.
@@ -834,6 +1088,14 @@ of Windows 10 that support GPU selection through the OS.
 Other platforms may be included in the future, but they will require separate
 platform-specific interfaces.
 
+A requirement of `vk_icdEnumerateAdapterPhysicalDevices` is that it *must*
+return the same `VkPhysicalDevice` handle values for the same physical
+devices that are returned by `vkEnumeratePhysicalDevices`.
+This is because the loader calls both functions on the driver then
+de-duplicates the physical devices using the `VkPhysicalDevice` handles.
+Since not all physical devices in a driver will have a LUID, such as for
+software implementations, this step is necessary to allow drivers to
+enumerate all available physical devices.
 
 ## Driver Dispatchable Object Creation
 
@@ -914,8 +1176,8 @@ appropriate `VkIcdSurfaceXXX` structure.
 
 The driver may choose to handle `VkSurfaceKHR` object creation instead.
 If a driver desires to handle creating and destroying it must do the following:
- 1. Support version 3 or newer of the loader/driver interface.
- 2. Export and handle all functions that take in a `VkSurfaceKHR` object,
+ 1. Support Loader and Driver Interface Version 3 or newer.
+ 2. Expose and handle all functions that take in a `VkSurfaceKHR` object,
 including:
      * `vkCreateXXXSurfaceKHR`
      * `vkGetPhysicalDeviceSurfaceSupportKHR`
@@ -958,13 +1220,16 @@ These additional requirements are versioned to allow flexibility in the future.
 ### Windows, Linux and macOS Driver Negotiation
 
 
-#### Version Negotiation Between Loader and Drivers
+#### Version Negotiation Between the Loader and Drivers
 
-All drivers (supporting interface version 2 or higher) must export the
-following function that is used for determination of the interface version that
-will be used.
+All drivers supporting Loader and Driver Interface Version 2 or higher must
+export the following function that is used for determination of the interface
+version that will be used.
 This entry point is not a part of the Vulkan API itself, only a private
 interface between the loader and drivers.
+Note: Loader and Driver Interface Version 7 makes exporting
+`vk_icdNegotiateLoaderICDInterfaceVersion` optional.
+Instead, drivers *must* expose it through `vk_icdGetInstanceProcAddr`.
 
 ```cpp
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -1008,19 +1273,50 @@ during enumeration.
 
 #### Interfacing With Legacy Drivers or Loaders
 
-If a loader sees that a driver does not export the
+If a loader sees that a driver does not export or expose the
 `vk_icdNegotiateLoaderICDInterfaceVersion` function, then the loader assumes the
 corresponding driver only supports either interface version 0 or 1.
 
 From the other side of the interface, if a driver sees a call to
 `vk_icdGetInstanceProcAddr` before a call to
-`vk_icdNegotiateLoaderICDInterfaceVersion`, then it knows that loader making the
-calls is a legacy loader supporting version 0 or 1.
-If the loader calls `vk_icdGetInstanceProcAddr` first, it supports at least
-version 1.
+`vk_icdNegotiateLoaderICDInterfaceVersion`, then the loader is either a legacy
+loader with only support for interface version 0 or 1, or the loader is using
+interface version 7 or newer.
+
+If the first call to `vk_icdGetInstanceProcAddr` is to query for
+`vk_icdNegotiateLoaderICDInterfaceVersion`, then that means the loader is using
+interface version 7.
+This only occurs when the driver does not export
+`vk_icdNegotiateLoaderICDInterfaceVersion`.
+Drivers which export `vk_icdNegotiateLoaderICDInterfaceVersion` will have it
+called first.
+
+If the first call to `vk_icdGetInstanceProcAddr` is **not** querying for
+`vk_icdNegotiateLoaderICDInterfaceVersion`, then loader is a legacy loader only
+which supports version 0 or 1.
+In this case, if the loader calls `vk_icdGetInstanceProcAddr` first, it supports
+at least interface version 1.
 Otherwise, the loader only supports version 0.
 
-#### Loader Version 6 Interface Requirements
+#### Loader and Driver Interface Version 7 Requirements
+
+Version 7 relaxes the requirement that Loader and Driver Interface functions
+must be exported.
+Instead, it only requires that those functions be queryable through
+`vk_icdGetInstanceProcAddr`.
+The functions are:
+    `vk_icdNegotiateLoaderICDInterfaceVersion`
+    `vk_icdGetPhysicalDeviceProcAddr`
+    `vk_icdEnumerateAdapterPhysicalDevices` (Windows only)
+These functions are considered global for the purposes of retrieval, so the
+`VkInstance` parameter of `vk_icdGetInstanceProcAddr` will be **NULL**.
+While exporting these functions is no longer a requirement, drivers may still
+export them for compatibility with older loaders.
+The changes in this version allow drivers provided through the
+`VK_LUNARG_direct_driver_loading` extension to support the entire Loader and
+Driver Interface.
+
+#### Loader and Driver Interface Version 6 Requirements
 
 Version 6 provides a mechanism to allow the loader to sort physical devices.
 The loader will only attempt to sort physical devices on a driver if version 6
@@ -1028,9 +1324,9 @@ of the interface is supported.
 This version provides the `vk_icdEnumerateAdapterPhysicalDevices` function
 defined earlier in this document.
 
-#### Loader Version 5 Interface Requirements
+#### Loader and Driver Interface Version 5 Requirements
 
-Version 5 of the loader/driver interface has no changes to the actual interface.
+This interface version has no changes to the actual interface.
 If the loader requests interface version 5 or greater, it is simply
 an indication to drivers that the loader is now evaluating whether the API
 Version info passed into vkCreateInstance is a valid version for the loader.
@@ -1087,10 +1383,9 @@ Here is a table of the expected behaviors:
   </tr>
 </table>
 
-#### Loader Version 4 Interface Requirements
+#### Loader and Driver Interface Version 4 Requirements
 
-The major change to version 4 of the loader/driver interface is the
-support of
+The major change to version 4 of this interface version is the support of
 [Unknown Physical Device Extensions](#driver-unknown-physical-device-extensions)
 using the `vk_icdGetPhysicalDeviceProcAddr` function.
 This function is purely optional.
@@ -1100,16 +1395,16 @@ Otherwise, the loader will continue to treat any unknown functions as VkDevice
 functions and cause invalid behavior.
 
 
-#### Loader Version 3 Interface Requirements
+#### Loader and Driver Interface Version 3 Requirements
 
-The primary change that occurred in version 3 of the loader/driver interface was
-to allow a driver to handle creation/destruction of their own KHR_surfaces.
+The primary change that occurred in this interface version is to allow a driver
+to handle creation and destruction of their own KHR_surfaces.
 Up until this point, the loader created a surface object that was used by all
 drivers.
-However, some drivers may want to provide their own surface handles.
-If a driver chooses to enable this support, it must export support for version 3
-of the loader/driver interface, as well as any Vulkan function that uses a
-KHR_surface handle, such as:
+However, some drivers *may* want to provide their own surface handles.
+If a driver chooses to enable this support, it must support Loader and Driver
+Interface Version 3, as well as any Vulkan function that uses a `VkSurfaceKHR`
+handle, such as:
 - `vkCreateXXXSurfaceKHR` (where XXX is the platform-specific identifier [i.e.
 `vkCreateWin32SurfaceKHR` for Windows])
 - `vkDestroySurfaceKHR`
@@ -1119,25 +1414,24 @@ KHR_surface handle, such as:
 - `vkGetPhysicalDeviceSurfaceFormatsKHR`
 - `vkGetPhysicalDeviceSurfacePresentModesKHR`
 
-A driver can still choose to not take advantage of this functionality
-by simply not exposing the above `vkCreateXXXSurfaceKHR` and
+A driver which does not participate in this functionality can opt out by
+simply not exposing the above `vkCreateXXXSurfaceKHR` and
 `vkDestroySurfaceKHR` functions.
 
 
-#### Loader Version 2 Interface Requirements
+#### Loader and Driver Interface Version 2 Requirements
 
-Version 2 interface is the first to implement the new
-`vk_icdNegotiateLoaderICDInterfaceVersion` functionality, see
-[Version Negotiation Between Loader and Drivers](#version-negotiation-between-loader-and-drivers) for more details
-on that function.
+Interface Version 2 requires that drivers export
+`vk_icdNegotiateLoaderICDInterfaceVersion`.
+For more information, see [Version Negotiation Between Loader and Drivers](#version-negotiation-between-loader-and-drivers).
 
-Additional, version 2 was the first to define that Vulkan dispatchable objects
-created by drivers must now be created in accordance to the
+Additional, version 2 requires that Vulkan dispatchable objects created by
+drivers must be created in accordance to the
 [Driver Dispatchable Object Creation](#driver-dispatchable-object-creation)
 section.
 
 
-#### Loader Version 1 Interface Requirements
+#### Loader and Driver Interface Version 1 Requirements
 
 Version 1 of the interface added the driver-specific entry-point
 `vk_icdGetInstanceProcAddr`.
@@ -1152,14 +1446,14 @@ No other entry-points need to be exported by the driver as the loader will query
 the appropriate function pointers using that.
 
 
-#### Loader Version 0 Interface Requirements
+#### Loader and Driver Interface Version 0 Requirements
 
-Version 0 interface does not support either `vk_icdGetInstanceProcAddr` or
+Version 0 does not support either `vk_icdGetInstanceProcAddr` or
 `vk_icdNegotiateLoaderICDInterfaceVersion`.
 Because of this, the loader will assume the driver supports only version 0 of
 the interface unless one of those functions exists.
 
-Additionally, for version 0, the driver must expose at least the following core
+Additionally, for Version 0, the driver must expose at least the following core
 Vulkan entry-points so the loader may build up the interface to the driver:
 
 - The function `vkGetInstanceProcAddr` **must be exported** in the driver
@@ -1200,6 +1494,25 @@ information directly from the respective libraries and does not use the JSON
 manifest files used by the Windows, Linux and macOS loaders.
 
 
+## Loader implementation of VK_KHR_portability_enumeration
+
+The loader implements the `VK_KHR_portability_enumeration` instance extension,
+which filters out any drivers that report support for the portability subset
+device extension. Unless the application explicitly requests enumeration of
+portability devices by setting the
+`VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` bit in the
+VkInstanceCreateInfo::flags, the loader does not load any drivers that declare
+themselves to be portability drivers.
+
+Drivers declare whether they are portability drivers or not in the Driver
+Manifest Json file, with the `is_portability_driver` boolean field.
+[More information here](#driver-manifest-file-version-101)
+
+The initial support for this extension only reported errors when an application
+did not enable the portability enumeration feature. It did not filter out
+portability drivers. This was done to give a grace period for applications to
+update their instance creation logic without outright breaking the application.
+
 ## Loader and Driver Policy
 
 This section is intended to define proper behavior expected between the loader
@@ -1209,7 +1522,7 @@ maintaining consistency across platforms.
 In fact, much of the language can be found throughout this document, but is
 summarized here for convenience.
 Additionally, there should be a way to identify bad or non-conformant behavior
-in adriver and remedy it as soon as possible.
+in a driver and remedy it as soon as possible.
 Therefore, a policy numbering system is provided to clearly identify each
 policy statement in a unique way.
 
@@ -1222,8 +1535,8 @@ best experience to end-users and developers.
 
 ### Number Format
 
-Loader/Driver policy items start with the prefix `LDP_` (short for
-Loader/Driver Policy) which is followed by an identifier based on what
+Loader and Driver policy items start with the prefix `LDP_` (short for
+Loader and Driver Policy) which is followed by an identifier based on what
 component the policy is targeted against.
 In this case there are only two possible components:
  - Drivers: which will have the string `DRIVER_` as part of the policy number.
@@ -1285,7 +1598,7 @@ Android Vulkan documentation</a>.
   <tr>
     <td><small><b>LDP_DRIVER_3</b></small></td>
     <td>A driver <b>must</b> be able to negotiate a supported version of the
-        loader/driver interface with the loader in accordance with the stated
+        Loader and Driver Interface with the loader in accordance with the stated
         negotiation process.
     </td>
     <td>The driver will not be loaded.</td>
@@ -1327,41 +1640,25 @@ Android Vulkan documentation</a>.
         possibly including crashes or corruption.
     </td>
     <td><small>
-        <a href="https://github.com/KhronosGroup/VK-GL-CTS/blob/master/external/openglcts/README.md">
+        <a href="https://github.com/KhronosGroup/VK-GL-CTS/blob/main/external/openglcts/README.md">
         Vulkan CTS Documentation</a>
         </small>
     </td>
   </tr>
   <tr>
     <td><small><b>LDP_DRIVER_6</b></small></td>
-    <td>A driver supporting loader/driver interface version 1 or newer <b>must
-        not</b> directly export standard Vulkan entry-points.
-        <br/>
-        Instead, it <b>must</b> export only the loader interface functions
-        required by the interface versions it does support (for example
-        <i>vk_icdGetInstanceProcAddr</i>). <br/>
-        This is because the dynamic linking on some platforms has been
-        problematic in the past and incorrectly links to exported functions from
-        the wrong dynamic library at times. <br/>
-        <b>NOTE:</b> This is actually true for all exports.
-        When in doubt, don't export any items from a driver that could cause
-        conflicts in other libraries.
+    <td>Removed - See
+        <a href="#removed-driver-policies">Removed Driver Policies</a>
     </td>
-    <td>The behavior is undefined and may result in crashes or corruption.</td>
-    <td>Yes (except it always applies)</td>
-    <td>Yes</td>
-    <td><small>
-        <a href="#loader-and-driver-interface-negotiation">
-        Interface Negotiation</a></small>
-        and
-        <a href="#driver-vulkan-entry-point-discovery">
-        Vulkan Entry-point Discovery</a></small>
-    </td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
   </tr>
   <tr>
     <td><small><b>LDP_DRIVER_7</b></small></td>
     <td>If a driver desires to support Vulkan API 1.1 or newer, it <b>must</b>
-        expose support of Vulkan loader/driver interface 5 or newer.
+        expose support for Loader and Driver Interface Version 5 or newer.
     </td>
     <td>The driver will be used when it shouldn't be and will cause
         undefined behavior possibly including crashes or corruption.
@@ -1376,7 +1673,7 @@ Android Vulkan documentation</a>.
   <tr>
     <td><small><b>LDP_DRIVER_8</b></small></td>
     <td>If a driver wishes to handle its own <i>VkSurfaceKHR</i> object
-        creation, it <b>must</b> implement loader/driver interface version 3 or
+        creation, it <b>must</b> implement the Loader and Driver Interface Version 3 or
         newer and support querying all the relevant surface functions via
         <i>vk_icdGetInstanceProcAddr</i>.
     </td>
@@ -1390,15 +1687,15 @@ Android Vulkan documentation</a>.
   </tr>
   <tr>
     <td><small><b>LDP_DRIVER_9</b></small></td>
-    <td>If a driver negotiation results in it using loader/driver interface
-        version 4 or earlier, the driver <b>must</b> verify that the Vulkan API
-        version passed into <i>vkCreateInstance</i> (through
+    <td>If version negotiation results in a driver using the Loader
+        and Driver Interface Version 4 or earlier, the driver <b>must</b> verify
+        that the Vulkan API version passed into <i>vkCreateInstance</i> (through
         <i>VkInstanceCreateInfo</i>’s <i>VkApplicationInfo</i>'s
         <i>apiVersion</i>) is supported.
         If the requested Vulkan API version can not be supported by the driver,
         it <b>must</b> return <b>VK_ERROR_INCOMPATIBLE_DRIVER</b>. <br/>
         This is not required if the interface version is 5 or newer because the
-        responsibility for this check then falls on the loader.
+        loader is responsible for this check.
     </td>
     <td>The behavior is undefined and may result in crashes or corruption.</td>
     <td>No</td>
@@ -1410,11 +1707,13 @@ Android Vulkan documentation</a>.
   </tr>
   <tr>
     <td><small><b>LDP_DRIVER_10</b></small></td>
-    <td>If a driver negotiation results in it using loader/driver interface
-        version 5 or newer, the driver <b>must</b> ignore the Vulkan API version
+    <td>If version negotiation results in a driver using the Loader and Driver Interface
+        Version 5 or newer, the driver <b>must</b> not return
+        <b>VK_ERROR_INCOMPATIBLE_DRIVER</b> if the Vulkan API version
         passed into <i>vkCreateInstance</i> (through
         <i>VkInstanceCreateInfo</i>’s <i>VkApplicationInfo</i>'s
-        <i>apiVersion</i>).
+        <i>apiVersion</i>) is not supported by the driver. This check is performed
+        by the loader on the drivers behalf.
     </td>
     <td>The behavior is undefined and may result in crashes or corruption.</td>
     <td>No</td>
@@ -1460,6 +1759,40 @@ Android Vulkan documentation</a>.
   </tr>
 </table>
 
+#### Removed Driver Policies
+
+These policies were in the loader source at some point but later removed.
+They are documented here for reference.
+
+<table>
+  <tr>
+    <th>Requirement Number</th>
+    <th>Requirement Description</th>
+    <th>Removal Reason</th>
+  </tr>
+  <tr>
+    <td><small><b>LDP_DRIVER_6</b></small></td>
+    <td>A driver supporting Loader and Driver Interface Version 1 or newer <b>must
+        not</b> directly export standard Vulkan entry-points.
+        <br/>
+        Instead, it <b>must</b> export only the loader interface functions
+        required by the interface versions it does support (for example
+        <i>vk_icdGetInstanceProcAddr</i>). <br/>
+        This is because the dynamic linking on some platforms has been
+        problematic in the past and incorrectly links to exported functions from
+        the wrong dynamic library at times. <br/>
+        <b>NOTE:</b> This is actually true for all exports.
+        When in doubt, don't export any items from a driver that could cause
+        conflicts in other libraries.<br/>
+    </td>
+    <td>
+        This policy has been removed due to there being valid circumstances for
+        drivers to export core entrypoints.
+        Additionally, it was not found that dynamic linking would cause many
+        issues in practice.
+    </td>
+  </tr>
+</table>
 
 ### Requirements of a Well-Behaved Loader
 
@@ -1525,7 +1858,7 @@ Android Vulkan documentation</a>.
   <tr>
     <td><small><b>LDP_LOADER_5</b></small></td>
     <td>A loader <b>must</b> ignore any driver for which a compatible
-        loader/driver interface version can not be negotiated.
+        Loader and Driver Interface Version can not be negotiated.
     </td>
     <td>The loader would load a driver improperly resulting in undefined
         behavior possibly including crashes or corruption.
@@ -1538,16 +1871,16 @@ Android Vulkan documentation</a>.
   </tr>
   <tr>
     <td><small><b>LDP_LOADER_6</b></small></td>
-    <td>If a driver negotiation results in it using loader/driver interface
-        version 5 or newer, a loader <b>must</b> verify that the Vulkan API
-        version passed into <i>vkCreateInstance</i> (through
+    <td>If a driver negotiation results in the loader using Loader and Driver
+        Interface Version 5 or newer, a loader <b>must</b> verify that the Vulkan
+        API version passed into <i>vkCreateInstance</i> (through
         <i>VkInstanceCreateInfo</i>’s <i>VkApplicationInfo</i>'s
         <i>apiVersion</i>) is supported by at least one driver.
         If the requested Vulkan API version can not be supported by any
         driver, the loader <b>must</b> return
         <b>VK_ERROR_INCOMPATIBLE_DRIVER</b>.<br/>
-        This is not required if the interface version is 4 or earlier because
-        the responsibility for this check then falls on the drivers.
+        This is not required if the Loader and Driver Interface Version is 4 or
+        earlier because the responsibility for this check falls on the drivers.
     </td>
     <td>The behavior is undefined and may result in crashes or corruption.</td>
     <td>No</td>

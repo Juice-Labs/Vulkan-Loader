@@ -24,25 +24,31 @@
  */
 #pragma once
 
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <sys/types.h>
 #include <sys/select.h>
 #endif
 
-#if defined(_WIN32)
-// WinSock2.h must be included *BEFORE* windows.h
-#include <winsock2.h>
-#endif  // _WIN32
-
 #include <assert.h>
-#include <string.h>
+#include <float.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #if defined(__Fuchsia__)
 #include "dlopen_fuchsia.h"
 #endif  // defined(__Fuchsia__)
 
-#if defined(__linux__) || defined(__APPLE__) || defined(__Fuchsia__) || defined(__QNXNTO__) || defined(__FreeBSD__)
+// Set of platforms with a common set of functionality which is queried throughout the program
+#if defined(__linux__) || defined(__APPLE__) || defined(__Fuchsia__) || defined(__QNX__) || defined(__FreeBSD__) || \
+    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__GNU__)
+#define COMMON_UNIX_PLATFORMS 1
+#else
+#define COMMON_UNIX_PLATFORMS 0
+#endif
+
+#if COMMON_UNIX_PLATFORMS
 #include <unistd.h>
 // Note: The following file is for dynamic loading:
 #include <dlfcn.h>
@@ -50,14 +56,13 @@
 #include <stdlib.h>
 #include <libgen.h>
 
-#elif defined(_WIN32)  // defined(__linux__)
-/* Windows-specific common code: */
+#elif defined(_WIN32)
 // WinBase.h defines CreateSemaphore and synchapi.h defines CreateEvent
 //  undefine them to avoid conflicts with VkLayerDispatchTable struct members.
-#ifdef CreateSemaphore
+#if defined(CreateSemaphore)
 #undef CreateSemaphore
 #endif
-#ifdef CreateEvent
+#if defined(CreateEvent)
 #undef CreateEvent
 #endif
 #include <stdio.h>
@@ -66,17 +71,15 @@
 #include <direct.h>
 #endif  // defined(_WIN32)
 
-#include "vulkan/vk_platform.h"
-#include "vulkan/vk_sdk_platform.h"
-#include <vulkan/vulkan.h>
-#include <vulkan/vk_layer.h>
-#include <vulkan/vk_icd.h>
+#include "stack_allocation.h"
 
-#include "vk_loader_layer.h"
-#include "vk_layer_dispatch_table.h"
-#include "vk_loader_extensions.h"
+#if defined(APPLE_STATIC_LOADER) && !defined(__APPLE__)
+#error "APPLE_STATIC_LOADER can only be defined on Apple platforms!"
+#endif
 
-#if defined(__GNUC__) && __GNUC__ >= 4
+#if defined(APPLE_STATIC_LOADER)
+#define LOADER_EXPORT
+#elif defined(__GNUC__) && __GNUC__ >= 4
 #define LOADER_EXPORT __attribute__((visibility("default")))
 #elif defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590)
 #define LOADER_EXPORT __attribute__((visibility("default")))
@@ -84,28 +87,43 @@
 #define LOADER_EXPORT
 #endif
 
-// A debug option to disable allocators at compile time to investigate future issues.
-#define DEBUG_DISABLE_APP_ALLOCATORS 0
-
 #define MAX_STRING_SIZE 1024
 
 // This is defined in vk_layer.h, but if there's problems we need to create the define
 // here.
-#ifndef MAX_NUM_UNKNOWN_EXTS
+#if !defined(MAX_NUM_UNKNOWN_EXTS)
 #define MAX_NUM_UNKNOWN_EXTS 250
 #endif
 
 // Environment Variable information
-#define VK_ICD_FILENAMES_ENV_VAR "VK_ICD_FILENAMES" // Deprecated
+#define VK_ICD_FILENAMES_ENV_VAR "VK_ICD_FILENAMES"  // Deprecated in v1.3.207 loader
 #define VK_DRIVER_FILES_ENV_VAR "VK_DRIVER_FILES"
-#define VK_ADDITIONAL_DRIVER_FILES_ENV_VAR "VK_ADD_DRIVER_FILES"
 #define VK_LAYER_PATH_ENV_VAR "VK_LAYER_PATH"
+// Support added in v1.3.207 loader
+#define VK_ADDITIONAL_DRIVER_FILES_ENV_VAR "VK_ADD_DRIVER_FILES"
 #define VK_ADDITIONAL_LAYER_PATH_ENV_VAR "VK_ADD_LAYER_PATH"
+// Support added in v1.3.234 loader
+#define VK_LAYERS_ENABLE_ENV_VAR "VK_LOADER_LAYERS_ENABLE"
+#define VK_LAYERS_DISABLE_ENV_VAR "VK_LOADER_LAYERS_DISABLE"
+#define VK_LAYERS_ALLOW_ENV_VAR "VK_LOADER_LAYERS_ALLOW"
+#define VK_DRIVERS_SELECT_ENV_VAR "VK_LOADER_DRIVERS_SELECT"
+#define VK_DRIVERS_DISABLE_ENV_VAR "VK_LOADER_DRIVERS_DISABLE"
+#define VK_LOADER_DISABLE_ALL_LAYERS_VAR_1 "~all~"
+#define VK_LOADER_DISABLE_ALL_LAYERS_VAR_2 "*"
+#define VK_LOADER_DISABLE_ALL_LAYERS_VAR_3 "**"
+#define VK_LOADER_DISABLE_IMPLICIT_LAYERS_VAR "~implicit~"
+#define VK_LOADER_DISABLE_EXPLICIT_LAYERS_VAR "~explicit~"
 
 // Override layer information
 #define VK_OVERRIDE_LAYER_NAME "VK_LAYER_LUNARG_override"
 
-#if defined(__linux__) || defined(__APPLE__) || defined(__Fuchsia__) || defined(__QNXNTO__) || defined(__FreeBSD__)
+// Loader Settings filename
+#define VK_LOADER_SETTINGS_FILENAME "vk_loader_settings.json"
+
+#define LAYERS_PATH_ENV "VK_LAYER_PATH"
+#define ENABLED_LAYERS_ENV "VK_INSTANCE_LAYERS"
+
+#if COMMON_UNIX_PLATFORMS
 /* Linux-specific common code: */
 
 // VK Library Filenames, Paths, etc.:
@@ -126,21 +144,105 @@
 #define VK_ILAYERS_INFO_RELATIVE_DIR VULKAN_DIR VULKAN_ILAYERCONF_DIR
 
 #define VK_DRIVERS_INFO_REGISTRY_LOC ""
-#define VK_SETTINGS_INFO_REGISTRY_LOC ""
 #define VK_ELAYERS_INFO_REGISTRY_LOC ""
 #define VK_ILAYERS_INFO_REGISTRY_LOC ""
+#define VK_SETTINGS_INFO_REGISTRY_LOC ""
 
-#if !defined(DEFAULT_VK_LAYERS_PATH)
-#define DEFAULT_VK_LAYERS_PATH ""
+#if defined(__QNX__)
+#define SYSCONFDIR "/etc"
 #endif
-#if !defined(LAYERS_SOURCE_PATH)
-#define LAYERS_SOURCE_PATH NULL
-#endif
-#define LAYERS_PATH_ENV "VK_LAYER_PATH"
-#define ENABLED_LAYERS_ENV "VK_INSTANCE_LAYERS"
 
 // C99:
 #define PRINTF_SIZE_T_SPECIFIER "%zu"
+
+// Dynamic Loading of libraries:
+typedef void *loader_platform_dl_handle;
+
+// Threads:
+typedef pthread_t loader_platform_thread;
+
+// Thread IDs:
+typedef pthread_t loader_platform_thread_id;
+
+// Thread mutex:
+typedef pthread_mutex_t loader_platform_thread_mutex;
+
+typedef pthread_cond_t loader_platform_thread_cond;
+
+#elif defined(_WIN32)
+/* Windows-specific common code: */
+// VK Library Filenames, Paths, etc.:
+#define PATH_SEPARATOR ';'
+#define DIRECTORY_SYMBOL '\\'
+#define DEFAULT_VK_REGISTRY_HIVE HKEY_LOCAL_MACHINE
+#define DEFAULT_VK_REGISTRY_HIVE_STR "HKEY_LOCAL_MACHINE"
+#define SECONDARY_VK_REGISTRY_HIVE HKEY_CURRENT_USER
+#define SECONDARY_VK_REGISTRY_HIVE_STR "HKEY_CURRENT_USER"
+
+#define VK_DRIVERS_INFO_RELATIVE_DIR ""
+#define VK_SETTINGS_INFO_RELATIVE_DIR ""
+#define VK_ELAYERS_INFO_RELATIVE_DIR ""
+#define VK_ILAYERS_INFO_RELATIVE_DIR ""
+
+#define VK_DRIVERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan\\Drivers"
+#define VK_ELAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan\\ExplicitLayers"
+#define VK_ILAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers"
+#define VK_SETTINGS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan\\LoaderSettings"
+
+#define PRINTF_SIZE_T_SPECIFIER "%Iu"
+
+// Dynamic Loading:
+typedef HMODULE loader_platform_dl_handle;
+
+// Threads:
+typedef HANDLE loader_platform_thread;
+
+// Thread IDs:
+typedef DWORD loader_platform_thread_id;
+
+// Thread mutex:
+typedef CRITICAL_SECTION loader_platform_thread_mutex;
+
+typedef CONDITION_VARIABLE loader_platform_thread_cond;
+
+#else
+
+#warning The "vk_loader_platform.h" file must be modified for this OS.
+
+// NOTE: In order to support another OS, an #elif needs to be added (above the
+// "#else // defined(_WIN32)") for that OS, and OS-specific versions of the
+// contents of this file must be created, or extend one of the existing OS specific
+// sections with the necessary changes.
+
+#endif
+
+// controls whether loader_platform_close_library() closes the libraries or not - controlled by an environment variables
+extern bool loader_disable_dynamic_library_unloading;
+
+// Returns true if the DIRECTORY_SYMBOL is contained within path
+static inline bool loader_platform_is_path(const char *path) { return strchr(path, DIRECTORY_SYMBOL) != NULL; }
+
+// The once init functionality is not used when building a DLL on Windows. This is because there is no way to clean up the
+// resources allocated by anything allocated by once init. This isn't a problem for static libraries, but it is for dynamic
+// ones. When building a DLL, we use DllMain() instead to allow properly cleaning up resources.
+
+#if defined(APPLE_STATIC_LOADER)
+static inline void loader_platform_thread_once_fn(pthread_once_t *ctl, void (*func)(void)) {
+    assert(func != NULL);
+    assert(ctl != NULL);
+    pthread_once(ctl, func);
+}
+#define LOADER_PLATFORM_THREAD_ONCE_DECLARATION(var) pthread_once_t var = PTHREAD_ONCE_INIT;
+#define LOADER_PLATFORM_THREAD_ONCE_EXTERN_DEFINITION(var) extern pthread_once_t var;
+#define LOADER_PLATFORM_THREAD_ONCE(ctl, func) loader_platform_thread_once_fn(ctl, func);
+#else
+#define LOADER_PLATFORM_THREAD_ONCE_DECLARATION(var)
+#define LOADER_PLATFORM_THREAD_ONCE_EXTERN_DEFINITION(var)
+#define LOADER_PLATFORM_THREAD_ONCE(ctl, func)
+
+#endif
+
+#if COMMON_UNIX_PLATFORMS
 
 // File IO
 static inline bool loader_platform_file_exists(const char *path) {
@@ -150,6 +252,8 @@ static inline bool loader_platform_file_exists(const char *path) {
         return true;
 }
 
+// Returns true if the given string appears to be a relative or absolute
+// path, as opposed to a bare filename.
 static inline bool loader_platform_is_path_absolute(const char *path) {
     if (path[0] == '/')
         return true;
@@ -159,9 +263,9 @@ static inline bool loader_platform_is_path_absolute(const char *path) {
 
 static inline char *loader_platform_dirname(char *path) { return dirname(path); }
 
-#if defined(__linux__)
-
-// find application path + name. Path cannot be longer than 1024, returns NULL if it is greater than that.
+// loader_platform_executable_path finds application path + name.
+// Path cannot be longer than 1024, returns NULL if it is greater than that.
+#if defined(__linux__) || defined(__GNU__)
 static inline char *loader_platform_executable_path(char *buffer, size_t size) {
     ssize_t count = readlink("/proc/self/exe", buffer, size);
     if (count == -1) return NULL;
@@ -169,15 +273,32 @@ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
     buffer[count] = '\0';
     return buffer;
 }
-#elif defined(__APPLE__) // defined(__linux__)
+#elif defined(__APPLE__)
+#include <TargetConditionals.h>
+// TARGET_OS_IPHONE isn't just iOS it's also iOS/tvOS/watchOS. See TargetConditionals.h documentation.
+#if TARGET_OS_IPHONE
+static inline char *loader_platform_executable_path(char *buffer, size_t size) {
+    (void)size;
+    buffer[0] = '\0';
+    return buffer;
+}
+#endif
+#if TARGET_OS_OSX
 #include <libproc.h>
 static inline char *loader_platform_executable_path(char *buffer, size_t size) {
+    // proc_pidpath takes a uint32_t for the buffer size
+    if (size > UINT32_MAX) {
+        return NULL;
+    }
     pid_t pid = getpid();
-    int ret = proc_pidpath(pid, buffer, size);
-    if (ret <= 0) return NULL;
+    int ret = proc_pidpath(pid, buffer, (uint32_t)size);
+    if (ret <= 0) {
+        return NULL;
+    }
     buffer[ret] = '\0';
     return buffer;
 }
+#endif
 #elif defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/sysctl.h>
 static inline char *loader_platform_executable_path(char *buffer, size_t size) {
@@ -193,14 +314,15 @@ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
         -1,
 #endif
     };
-    if (sysctl(mib, sizeof(mib) / sizeof(mib[0]), buffer, &size, NULL, 0) < 0)
+    if (sysctl(mib, sizeof(mib) / sizeof(mib[0]), buffer, &size, NULL, 0) < 0) {
         return NULL;
+    }
 
     return buffer;
 }
-#elif defined(__Fuchsia__)
+#elif defined(__Fuchsia__) || defined(__OpenBSD__)
 static inline char *loader_platform_executable_path(char *buffer, size_t size) { return NULL; }
-#elif defined(__QNXNTO__)
+#elif defined(__QNX__)
 
 #define SYSCONFDIR "/etc"
 
@@ -224,19 +346,17 @@ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
 
     return buffer;
 }
-#endif  // defined (__QNXNTO__)
+#endif  // defined (__QNX__)
 
 // Compatability with compilers that don't support __has_feature
-#ifndef __has_feature
+#if !defined(__has_feature)
 #define __has_feature(x) 0
 #endif
 
 #if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
-#define LOADER_ADDRESS_SANITIZER
+#define LOADER_ADDRESS_SANITIZER_ACTIVE  // TODO: Add proper build flag for ASAN support
 #endif
 
-// Dynamic Loading of libraries:
-typedef void *loader_platform_dl_handle;
 // When loading the library, we use RTLD_LAZY so that not all symbols have to be
 // resolved at this time (which improves performance). Note that if not all symbols
 // can be resolved, this could cause crashes later. Use the LD_BIND_NOW environment
@@ -257,82 +377,50 @@ static inline loader_platform_dl_handle loader_platform_open_library(const char 
 #endif
 
 static inline const char *loader_platform_open_library_error(const char *libPath) {
-#ifdef __Fuchsia__
+    (void)libPath;
+#if defined(__Fuchsia__)
     return dlerror_fuchsia();
 #else
     return dlerror();
 #endif
 }
-static inline void loader_platform_close_library(loader_platform_dl_handle library) { dlclose(library); }
+static inline void loader_platform_close_library(loader_platform_dl_handle library) {
+    if (!loader_disable_dynamic_library_unloading) {
+        dlclose(library);
+    } else {
+        (void)library;
+    }
+}
 static inline void *loader_platform_get_proc_address(loader_platform_dl_handle library, const char *name) {
     assert(library);
     assert(name);
     return dlsym(library, name);
 }
-static inline const char *loader_platform_get_proc_address_error(const char *name) { return dlerror(); }
-
-// Threads:
-typedef pthread_t loader_platform_thread;
-
-// The once init functionality is not used on Linux
-#define LOADER_PLATFORM_THREAD_ONCE_DECLARATION(var)
-#define LOADER_PLATFORM_THREAD_ONCE_DEFINITION(var)
-#define LOADER_PLATFORM_THREAD_ONCE(ctl, func)
-
-// Thread IDs:
-typedef pthread_t loader_platform_thread_id;
-static inline loader_platform_thread_id loader_platform_get_thread_id() { return pthread_self(); }
+static inline const char *loader_platform_get_proc_address_error(const char *name) {
+    (void)name;
+    return dlerror();
+}
 
 // Thread mutex:
-typedef pthread_mutex_t loader_platform_thread_mutex;
 static inline void loader_platform_thread_create_mutex(loader_platform_thread_mutex *pMutex) { pthread_mutex_init(pMutex, NULL); }
 static inline void loader_platform_thread_lock_mutex(loader_platform_thread_mutex *pMutex) { pthread_mutex_lock(pMutex); }
 static inline void loader_platform_thread_unlock_mutex(loader_platform_thread_mutex *pMutex) { pthread_mutex_unlock(pMutex); }
 static inline void loader_platform_thread_delete_mutex(loader_platform_thread_mutex *pMutex) { pthread_mutex_destroy(pMutex); }
-typedef pthread_cond_t loader_platform_thread_cond;
-static inline void loader_platform_thread_init_cond(loader_platform_thread_cond *pCond) { pthread_cond_init(pCond, NULL); }
-static inline void loader_platform_thread_cond_wait(loader_platform_thread_cond *pCond, loader_platform_thread_mutex *pMutex) {
-    pthread_cond_wait(pCond, pMutex);
+
+static inline void *thread_safe_strtok(char *str, const char *delim, char **saveptr) { return strtok_r(str, delim, saveptr); }
+
+static inline FILE *loader_fopen(const char *fileName, const char *mode) { return fopen(fileName, mode); }
+static inline char *loader_strncat(char *dest, size_t dest_sz, const char *src, size_t count) {
+    (void)dest_sz;
+    return strncat(dest, src, count);
 }
-static inline void loader_platform_thread_cond_broadcast(loader_platform_thread_cond *pCond) { pthread_cond_broadcast(pCond); }
+static inline char *loader_strncpy(char *dest, size_t dest_sz, const char *src, size_t count) {
+    (void)dest_sz;
+    return strncpy(dest, src, count);
+}
 
-#elif defined(_WIN32)  // defined(__linux__)
+#elif defined(_WIN32)
 
-// VK Library Filenames, Paths, etc.:
-#define PATH_SEPARATOR ';'
-#define DIRECTORY_SYMBOL '\\'
-#define DEFAULT_VK_REGISTRY_HIVE HKEY_LOCAL_MACHINE
-#define DEFAULT_VK_REGISTRY_HIVE_STR "HKEY_LOCAL_MACHINE"
-#define SECONDARY_VK_REGISTRY_HIVE HKEY_CURRENT_USER
-#define SECONDARY_VK_REGISTRY_HIVE_STR "HKEY_CURRENT_USER"
-
-#define VK_DRIVERS_INFO_RELATIVE_DIR ""
-#define VK_SETTINGS_INFO_RELATIVE_DIR ""
-#define VK_ELAYERS_INFO_RELATIVE_DIR ""
-#define VK_ILAYERS_INFO_RELATIVE_DIR ""
-
-#ifdef _WIN64
-#define HKR_VK_DRIVER_NAME API_NAME "DriverName"
-#else
-#define HKR_VK_DRIVER_NAME API_NAME "DriverNameWow"
-#endif
-#define VK_DRIVERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\Drivers"
-#define VK_SETTINGS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\Settings"
-#define VK_ELAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\ExplicitLayers"
-#define VK_ILAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\ImplicitLayers"
-
-#if !defined(DEFAULT_VK_LAYERS_PATH)
-#define DEFAULT_VK_LAYERS_PATH ""
-#endif
-#if !defined(LAYERS_SOURCE_PATH)
-#define LAYERS_SOURCE_PATH NULL
-#endif
-#define LAYERS_PATH_ENV "VK_LAYER_PATH"
-#define ENABLED_LAYERS_ENV "VK_INSTANCE_LAYERS"
-
-#define PRINTF_SIZE_T_SPECIFIER "%Iu"
-
-#if defined(_WIN32)
 // Get the key for the plug n play driver registry
 // The string returned by this function should NOT be freed
 static inline const char *LoaderPnpDriverRegistry() {
@@ -371,17 +459,26 @@ static inline const wchar_t *LoaderPnpILayerRegistryWide() {
     IsWow64Process(GetCurrentProcess(), &is_wow);
     return is_wow ? L"VulkanImplicitLayersWow" : L"VulkanImplicitLayers";
 }
-#endif
 
 // File IO
-static bool loader_platform_file_exists(const char *path) {
-    if ((_access(path, 0)) == -1)
+static inline bool loader_platform_file_exists(const char *path) {
+    int path_utf16_size = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    if (path_utf16_size <= 0) {
+        return false;
+    }
+    wchar_t *path_utf16 = (wchar_t *)loader_stack_alloc(path_utf16_size * sizeof(wchar_t));
+    if (MultiByteToWideChar(CP_UTF8, 0, path, -1, path_utf16, path_utf16_size) != path_utf16_size) {
+        return false;
+    }
+    if (_waccess(path_utf16, 0) == -1)
         return false;
     else
         return true;
 }
 
-static bool loader_platform_is_path_absolute(const char *path) {
+// Returns true if the given string appears to be a relative or absolute
+// path, as opposed to a bare filename.
+static inline bool loader_platform_is_path_absolute(const char *path) {
     if (!path || !*path) {
         return false;
     }
@@ -411,70 +508,97 @@ static inline char *loader_platform_dirname(char *path) {
 }
 
 static inline char *loader_platform_executable_path(char *buffer, size_t size) {
-    DWORD ret = GetModuleFileName(NULL, buffer, (DWORD)size);
-    if (ret == 0) return NULL;
-    if (ret > size) return NULL;
-    buffer[ret] = '\0';
+    wchar_t *buffer_utf16 = (wchar_t *)loader_stack_alloc(size * sizeof(wchar_t));
+    DWORD ret = GetModuleFileNameW(NULL, buffer_utf16, (DWORD)size);
+    if (ret == 0) {
+        return NULL;
+    }
+    if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+        return NULL;
+    }
+    int buffer_utf8_size = WideCharToMultiByte(CP_UTF8, 0, buffer_utf16, -1, NULL, 0, NULL, NULL);
+    if (buffer_utf8_size <= 0 || (size_t)buffer_utf8_size > size) {
+        return NULL;
+    }
+    if (WideCharToMultiByte(CP_UTF8, 0, buffer_utf16, -1, buffer, buffer_utf8_size, NULL, NULL) != buffer_utf8_size) {
+        return NULL;
+    }
     return buffer;
 }
 
 // Dynamic Loading:
-typedef HMODULE loader_platform_dl_handle;
-static loader_platform_dl_handle loader_platform_open_library(const char *lib_path) {
+static inline loader_platform_dl_handle loader_platform_open_library(const char *lib_path) {
+    int lib_path_utf16_size = MultiByteToWideChar(CP_UTF8, 0, lib_path, -1, NULL, 0);
+    if (lib_path_utf16_size <= 0) {
+        return NULL;
+    }
+    wchar_t *lib_path_utf16 = (wchar_t *)loader_stack_alloc(lib_path_utf16_size * sizeof(wchar_t));
+    if (MultiByteToWideChar(CP_UTF8, 0, lib_path, -1, lib_path_utf16, lib_path_utf16_size) != lib_path_utf16_size) {
+        return NULL;
+    }
     // Try loading the library the original way first.
-    loader_platform_dl_handle lib_handle = LoadLibrary(lib_path);
+    loader_platform_dl_handle lib_handle = LoadLibraryW(lib_path_utf16);
     if (lib_handle == NULL && GetLastError() == ERROR_MOD_NOT_FOUND) {
         // If that failed, then try loading it with broader search folders.
-        lib_handle = LoadLibraryEx(lib_path, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+        lib_handle = LoadLibraryExW(lib_path_utf16, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
     }
     return lib_handle;
 }
-static char *loader_platform_open_library_error(const char *libPath) {
+static inline const char *loader_platform_open_library_error(const char *libPath) {
     static char errorMsg[512];
     (void)snprintf(errorMsg, 511, "Failed to open dynamic library \"%s\" with error %lu", libPath, GetLastError());
     return errorMsg;
 }
-static void loader_platform_close_library(loader_platform_dl_handle library) { FreeLibrary(library); }
-static void *loader_platform_get_proc_address(loader_platform_dl_handle library, const char *name) {
+static inline void loader_platform_close_library(loader_platform_dl_handle library) {
+    if (!loader_disable_dynamic_library_unloading) {
+        FreeLibrary(library);
+    } else {
+        (void)library;
+    }
+}
+static inline void *loader_platform_get_proc_address(loader_platform_dl_handle library, const char *name) {
     assert(library);
     assert(name);
     return (void *)GetProcAddress(library, name);
 }
-static char *loader_platform_get_proc_address_error(const char *name) {
+static inline const char *loader_platform_get_proc_address_error(const char *name) {
     static char errorMsg[120];
     (void)snprintf(errorMsg, 119, "Failed to find function \"%s\" in dynamic library", name);
     return errorMsg;
 }
 
-// Threads:
-typedef HANDLE loader_platform_thread;
-
-// The once init functionality is not used when building a DLL on Windows. This is because there is no way to clean up the
-// resources allocated by anything allocated by once init. This isn't a problem for static libraries, but it is for dynamic
-// ones. When building a DLL, we use DllMain() instead to allow properly cleaning up resources.
-#define LOADER_PLATFORM_THREAD_ONCE_DECLARATION(var)
-#define LOADER_PLATFORM_THREAD_ONCE_DEFINITION(var)
-#define LOADER_PLATFORM_THREAD_ONCE(ctl, func)
-
-// Thread IDs:
-typedef DWORD loader_platform_thread_id;
-static loader_platform_thread_id loader_platform_get_thread_id() { return GetCurrentThreadId(); }
-
 // Thread mutex:
-typedef CRITICAL_SECTION loader_platform_thread_mutex;
-static void loader_platform_thread_create_mutex(loader_platform_thread_mutex *pMutex) { InitializeCriticalSection(pMutex); }
-static void loader_platform_thread_lock_mutex(loader_platform_thread_mutex *pMutex) { EnterCriticalSection(pMutex); }
-static void loader_platform_thread_unlock_mutex(loader_platform_thread_mutex *pMutex) { LeaveCriticalSection(pMutex); }
-static void loader_platform_thread_delete_mutex(loader_platform_thread_mutex *pMutex) { DeleteCriticalSection(pMutex); }
-typedef CONDITION_VARIABLE loader_platform_thread_cond;
-static void loader_platform_thread_init_cond(loader_platform_thread_cond *pCond) { InitializeConditionVariable(pCond); }
-static void loader_platform_thread_cond_wait(loader_platform_thread_cond *pCond, loader_platform_thread_mutex *pMutex) {
-    SleepConditionVariableCS(pCond, pMutex, INFINITE);
+static inline void loader_platform_thread_create_mutex(loader_platform_thread_mutex *pMutex) { InitializeCriticalSection(pMutex); }
+static inline void loader_platform_thread_lock_mutex(loader_platform_thread_mutex *pMutex) { EnterCriticalSection(pMutex); }
+static inline void loader_platform_thread_unlock_mutex(loader_platform_thread_mutex *pMutex) { LeaveCriticalSection(pMutex); }
+static inline void loader_platform_thread_delete_mutex(loader_platform_thread_mutex *pMutex) { DeleteCriticalSection(pMutex); }
+
+static inline void *thread_safe_strtok(char *str, const char *delimiters, char **context) {
+    return strtok_s(str, delimiters, context);
 }
-static void loader_platform_thread_cond_broadcast(loader_platform_thread_cond *pCond) { WakeAllConditionVariable(pCond); }
+
+static inline FILE *loader_fopen(const char *fileName, const char *mode) {
+    FILE *file = NULL;
+    errno_t err = fopen_s(&file, fileName, mode);
+    if (err != 0) return NULL;
+    return file;
+}
+
+static inline char *loader_strncat(char *dest, size_t dest_sz, const char *src, size_t count) {
+    errno_t err = strncat_s(dest, dest_sz, src, count);
+    if (err != 0) return NULL;
+    return dest;
+}
+
+static inline char *loader_strncpy(char *dest, size_t dest_sz, const char *src, size_t count) {
+    errno_t err = strncpy_s(dest, dest_sz, src, count);
+    if (err != 0) return NULL;
+    return dest;
+}
+
 #else  // defined(_WIN32)
 
-#error The "loader_platform.h" file must be modified for this OS.
+#warning The "vk_loader_platform.h" file must be modified for this OS.
 
 // NOTE: In order to support another OS, an #elif needs to be added (above the
 // "#else // defined(_WIN32)") for that OS, and OS-specific versions of the
@@ -484,7 +608,3 @@ static void loader_platform_thread_cond_broadcast(loader_platform_thread_cond *p
 // files with "WIN32" in it, as a quick way to find files that must be changed.
 
 #endif  // defined(_WIN32)
-
-// returns true if the given string appears to be a relative or absolute
-// path, as opposed to a bare filename.
-static inline bool loader_platform_is_path(const char *path) { return strchr(path, DIRECTORY_SYMBOL) != NULL; }

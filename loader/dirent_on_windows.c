@@ -15,10 +15,8 @@
 #include <string.h>
 
 #include "allocation.h"
-#include "loader.h"
-#include "vk_loader_platform.h"
 
-#ifdef __cplusplus
+#if defined(__cplusplus)
 extern "C" {
 #endif
 
@@ -31,30 +29,31 @@ struct DIR {
     char *name;           /* null-terminated char string */
 };
 
-DIR *opendir(const struct loader_instance *instance, const char *name) {
+DIR *opendir(const VkAllocationCallbacks *pAllocator, const char *name) {
     DIR *dir = 0;
 
     if (name && name[0]) {
         size_t base_length = strlen(name);
         const char *all = /* search pattern must end with suitable wildcard */
             strchr("/\\", name[base_length - 1]) ? "*" : "/*";
+        size_t full_length = base_length + strlen(all) + 1;
 
-        if ((dir = (DIR *)loader_instance_heap_alloc(instance, sizeof *dir, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)) != 0 &&
-            (dir->name = (char *)loader_instance_heap_alloc(instance, base_length + strlen(all) + 1,
-                                                            VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)) != 0) {
-            strcat(strcpy(dir->name, name), all);
+        if ((dir = (DIR *)loader_alloc(pAllocator, sizeof *dir, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)) != 0 &&
+            (dir->name = (char *)loader_calloc(pAllocator, full_length, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)) != 0) {
+            loader_strncpy(dir->name, full_length, name, base_length);
+            loader_strncat(dir->name, full_length, all, strlen(all));
 
             if ((dir->handle = (handle_type)_findfirst(dir->name, &dir->info)) != -1) {
                 dir->result.d_name = 0;
             } else /* rollback */
             {
-                loader_instance_heap_free(instance, dir->name);
-                loader_instance_heap_free(instance, dir);
+                loader_free(pAllocator, dir->name);
+                loader_free(pAllocator, dir);
                 dir = 0;
             }
         } else /* rollback */
         {
-            loader_instance_heap_free(instance, dir);
+            loader_free(pAllocator, dir);
             dir = 0;
             errno = ENOMEM;
         }
@@ -65,7 +64,7 @@ DIR *opendir(const struct loader_instance *instance, const char *name) {
     return dir;
 }
 
-int closedir(const struct loader_instance *instance, DIR *dir) {
+int closedir(const VkAllocationCallbacks *pAllocator, DIR *dir) {
     int result = -1;
 
     if (dir) {
@@ -73,8 +72,8 @@ int closedir(const struct loader_instance *instance, DIR *dir) {
             result = _findclose(dir->handle);
         }
 
-        loader_instance_heap_free(instance, dir->name);
-        loader_instance_heap_free(instance, dir);
+        loader_free(pAllocator, dir->name);
+        loader_free(pAllocator, dir);
     }
 
     if (result == -1) /* map all errors to EBADF */
@@ -110,7 +109,7 @@ void rewinddir(DIR *dir) {
     }
 }
 
-#ifdef __cplusplus
+#if defined(__cplusplus)
 }
 #endif
 

@@ -25,11 +25,9 @@
 
 #pragma once
 
-#include "loader_common.h"
+#include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <vulkan/vulkan_core.h>
 
 /* cJSON Types: */
 #define cJSON_False 0
@@ -60,106 +58,54 @@ typedef struct cJSON {
 
     char *string; /* The item's name string, if this item is the child of, or is
                      in the list of subitems of an object. */
+    /* pointer to the allocation callbacks to use */
+    VkAllocationCallbacks *pAllocator;
 } cJSON;
 
-/* Supply a block of JSON, and this returns a cJSON object you can interrogate.
- * Call cJSON_Delete when finished. */
-cJSON *cJSON_Parse(const struct loader_instance *instance, const char *value);
 /* Render a cJSON entity to text for transfer/storage. Free the char* when
  * finished. */
-char *cJSON_Print(const struct loader_instance *instance, cJSON *item);
+char *loader_cJSON_Print(cJSON *item);
 /* Render a cJSON entity to text for transfer/storage without any formatting.
  * Free the char* when finished. */
-char *cJSON_PrintUnformatted(const struct loader_instance *instance, cJSON *item);
-/* Render a cJSON entity to text using a buffered strategy. prebuffer is a guess
- * at the final size. guessing well reduces reallocation. fmt=0 gives
- * unformatted, =1 gives formatted */
-char *cJSON_PrintBuffered(const struct loader_instance *instance, cJSON *item, int prebuffer, int fmt);
+char *loader_cJSON_PrintUnformatted(cJSON *item);
 /* Delete a cJSON entity and all subentities. */
-void cJSON_Delete(const struct loader_instance *instance, cJSON *c);
-/* Delete an item allocated inside the JSON parser*/
-void cJSON_Free(const struct loader_instance *instance, void *p);
+void loader_cJSON_Delete(cJSON *c);
 
 /* Returns the number of items in an array (or object). */
-int cJSON_GetArraySize(cJSON *array);
+int loader_cJSON_GetArraySize(cJSON *array);
 /* Retrieve item number "item" from array "array". Returns NULL if unsuccessful.
  */
-cJSON *cJSON_GetArrayItem(cJSON *array, int item);
+cJSON *loader_cJSON_GetArrayItem(cJSON *array, int item);
 /* Get item "string" from object. Case insensitive. */
-cJSON *cJSON_GetObjectItem(cJSON *object, const char *string);
-
-/* For analysing failed parses. This returns a pointer to the parse error.
- * You'll probably need to look a few chars back to make sense of it. Defined
- * when cJSON_Parse() returns 0. 0 when cJSON_Parse() succeeds. */
-const char *cJSON_GetErrorPtr(void);
-
-/* These calls create a cJSON item of the appropriate type. */
-cJSON *cJSON_CreateNull(const struct loader_instance *instance);
-cJSON *cJSON_CreateTrue(const struct loader_instance *instance);
-cJSON *cJSON_CreateFalse(const struct loader_instance *instance);
-cJSON *cJSON_CreateBool(const struct loader_instance *instance, int b);
-cJSON *cJSON_CreateNumber(const struct loader_instance *instance, double num);
-cJSON *cJSON_CreateString(const struct loader_instance *instance, const char *string);
-cJSON *cJSON_CreateArray(const struct loader_instance *instance);
-cJSON *cJSON_CreateObject(const struct loader_instance *instance);
-
-/* These utilities create an Array of count items. */
-cJSON *cJSON_CreateIntArray(const struct loader_instance *instance, const int *numbers, int count);
-cJSON *cJSON_CreateFloatArray(const struct loader_instance *instance, const float *numbers, int count);
-cJSON *cJSON_CreateDoubleArray(const struct loader_instance *instance, const double *numbers, int count);
-cJSON *cJSON_CreateStringArray(const struct loader_instance *instance, const char **strings, int count);
-
-/* Append item to the specified array/object. */
-void cJSON_AddItemToArray(cJSON *array, cJSON *item);
-void cJSON_AddItemToObject(const struct loader_instance *instance, cJSON *object, const char *string, cJSON *item);
-/* Use this when string is definitely const  (i.e. a literal, or as good as), and
- * will definitely survive the cJSON object */
-void cJSON_AddItemToObjectCS(const struct loader_instance *instance, cJSON *object, const char *string, cJSON *item);
-/* Append reference to item to the specified array/object. Use this when you
- * want to add an existing cJSON to a new cJSON, but don't want to corrupt your
- * existing cJSON. */
-void cJSON_AddItemReferenceToArray(const struct loader_instance *instance, cJSON *array, cJSON *item);
-void cJSON_AddItemReferenceToObject(const struct loader_instance *instance, cJSON *object, const char *string, cJSON *item);
-
-/* Remove/Detatch items from Arrays/Objects. */
-cJSON *cJSON_DetachItemFromArray(cJSON *array, int which);
-void cJSON_DeleteItemFromArray(const struct loader_instance *instance, cJSON *array, int which);
-cJSON *cJSON_DetachItemFromObject(cJSON *object, const char *string);
-void cJSON_DeleteItemFromObject(const struct loader_instance *instance, cJSON *object, const char *string);
-
-/* Update array items. */
-void cJSON_InsertItemInArray(cJSON *array, int which, cJSON *newitem); /* Shifts pre-existing items to the right. */
-void cJSON_ReplaceItemInArray(const struct loader_instance *instance, cJSON *array, int which, cJSON *newitem);
-void cJSON_ReplaceItemInObject(const struct loader_instance *instance, cJSON *object, const char *string, cJSON *newitem);
-
-/* Duplicate a cJSON item */
-cJSON *cJSON_Duplicate(const struct loader_instance *instance, cJSON *item, int recurse);
-/* Duplicate will create a new, identical cJSON item to the one you pass, in new
-memory that will
-need to be released. With recurse!=0, it will duplicate any children connected
-to the item.
-The item->next and ->prev pointers are always zero on return from Duplicate. */
-
-/* ParseWithOpts allows you to require (and check) that the JSON is null
- * terminated, and to retrieve the pointer to the final byte parsed. */
-cJSON *cJSON_ParseWithOpts(const struct loader_instance *instance, const char *value, const char **return_parse_end,
-                           int require_null_terminated);
-
-void cJSON_Minify(char *json);
-
-/* Macros for creating things quickly. */
-#define cJSON_AddNullToObject(object, name) cJSON_AddItemToObject(object, name, cJSON_CreateNull())
-#define cJSON_AddTrueToObject(object, name) cJSON_AddItemToObject(object, name, cJSON_CreateTrue())
-#define cJSON_AddFalseToObject(object, name) cJSON_AddItemToObject(object, name, cJSON_CreateFalse())
-#define cJSON_AddBoolToObject(object, name, b) cJSON_AddItemToObject(object, name, cJSON_CreateBool(b))
-#define cJSON_AddNumberToObject(object, name, n) cJSON_AddItemToObject(object, name, cJSON_CreateNumber(n))
-#define cJSON_AddStringToObject(object, name, s) cJSON_AddItemToObject(object, name, cJSON_CreateString(s))
+cJSON *loader_cJSON_GetObjectItem(cJSON *object, const char *string);
 
 /* When assigning an integer value, it needs to be propagated to valuedouble
  * too. */
 #define cJSON_SetIntValue(object, val) ((object) ? (object)->valueint = (object)->valuedouble = (val) : (val))
 #define cJSON_SetNumberValue(object, val) ((object) ? (object)->valueint = (object)->valuedouble = (val) : (val))
 
-#ifdef __cplusplus
-}
-#endif
+// Helper functions to using JSON
+
+struct loader_instance;
+struct loader_string_list;
+
+// Read a JSON file into a buffer.
+//
+// @return -  A pointer to a cJSON object representing the JSON parse tree.
+//            This returned buffer should be freed by caller.
+VkResult loader_get_json(const struct loader_instance *inst, const char *filename, cJSON **json);
+
+// Given a cJSON object, find the string associated with the key and puts an pre-allocated string into out_string.
+// Length is given by out_str_len, and this function truncates the string with a null terminator if it the provided space isn't
+// large enough.
+VkResult loader_parse_json_string_to_existing_str(const struct loader_instance *inst, cJSON *object, const char *key,
+                                                  size_t out_str_len, char *out_string);
+
+// Given a cJSON object, find the string associated with the key and puts an allocated string into out_string.
+// It is the callers responsibility to free out_string.
+VkResult loader_parse_json_string(cJSON *object, const char *key, char **out_string);
+
+// Given a cJSON object, find the array of strings assocated with they key and writes the count into out_count and data into
+// out_array_of_strings. It is the callers responsibility to free out_array_of_strings.
+VkResult loader_parse_json_array_of_strings(const struct loader_instance *inst, cJSON *object, const char *key,
+                                            struct loader_string_list *string_list);

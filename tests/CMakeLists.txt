@@ -15,11 +15,6 @@
 # limitations under the License.
 # ~~~
 
-
-# By default, tests and loader are built without sanitizers
-# Use these options to force a specific sanitizer on all test executables
-option(TEST_USE_ADDRESS_SANITIZER "Linux only: Advanced memory checking" OFF)
-option(TEST_USE_THREAD_SANITIZER "Linux only: Advanced thread checking" OFF)
 option(ENABLE_LIVE_VERIFICATION_TESTS "Enable tests which expect to run on live drivers. Meant for manual verification only" OFF)
 
 include(GoogleTest)
@@ -36,19 +31,22 @@ add_executable(
         loader_layer_tests.cpp
         loader_regression_tests.cpp
         loader_phys_dev_inst_ext_tests.cpp
+        loader_settings_tests.cpp
         loader_version_tests.cpp
         loader_unknown_ext_tests.cpp
         loader_wsi_tests.cpp)
 target_link_libraries(test_regression PUBLIC testing_dependencies)
-set_target_properties(test_regression ${LOADER_STANDARD_CXX_PROPERTIES})
+set_target_properties(test_regression PROPERTIES ${TESTS_STANDARD_CXX_PROPERTIES})
 target_compile_definitions(test_regression PUBLIC VK_NO_PROTOTYPES)
 
+# Threading tests live in separate executabe just for threading tests as it'll need support
+# in the test harness to enable in CI, as thread sanitizer doesn't work with address sanitizer enabled.
 add_executable(
     test_threading
         loader_testing_main.cpp
         loader_threading_tests.cpp)
 target_link_libraries(test_threading PUBLIC testing_dependencies)
-set_target_properties(test_threading ${LOADER_STANDARD_CXX_PROPERTIES})
+set_target_properties(test_threading PROPERTIES ${TESTS_STANDARD_CXX_PROPERTIES})
 target_compile_definitions(test_threading PUBLIC VK_NO_PROTOTYPES)
 
 # executables that are meant for testing against real drivers rather than the mocks
@@ -73,5 +71,17 @@ if(WIN32)
     endif()
 endif()
 
+# https://discourse.cmake.org/t/googletest-crash-when-using-cmake-xcode-arm64/5766
+#
+# TLDR: On macOS arm64, all binaries have to be signed before running.
+# Delay test discovery until test time as a workaround.
+if (XCODE)
+    set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE "PRE_TEST")
+endif()
+
 # must happen after the dll's get copied over
-gtest_discover_tests(test_regression)
+if(NOT CMAKE_CROSSCOMPILING)
+    gtest_discover_tests(test_regression PROPERTIES DISCOVERY_TIMEOUT 100)
+else()
+    gtest_add_tests(TARGET test_regression)
+endif()
