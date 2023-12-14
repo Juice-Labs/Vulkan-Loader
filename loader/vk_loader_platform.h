@@ -536,12 +536,21 @@ static inline loader_platform_dl_handle loader_platform_open_library(const char 
     if (MultiByteToWideChar(CP_UTF8, 0, lib_path, -1, lib_path_utf16, lib_path_utf16_size) != lib_path_utf16_size) {
         return NULL;
     }
-    // Try loading the library the original way first.
-    loader_platform_dl_handle lib_handle = LoadLibraryW(lib_path_utf16);
-    if (lib_handle == NULL && GetLastError() == ERROR_MOD_NOT_FOUND) {
-        // If that failed, then try loading it with broader search folders.
-        lib_handle = LoadLibraryExW(lib_path_utf16, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+
+    loader_platform_dl_handle lib_handle = NULL;
+    if (loader_platform_is_path_absolute(lib_path)) {
+        // When absolute skip application dir favouring the dir of the loaded module to satisfy dependencies
+        lib_handle = LoadLibraryExW(lib_path_utf16, NULL, 
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS);
+    } else {
+        // Try loading the library the original way first.
+        lib_handle = LoadLibraryW(lib_path_utf16);
+        if (lib_handle == NULL && GetLastError() == ERROR_MOD_NOT_FOUND) {
+            // If that failed, then try loading it with broader search folders.
+            lib_handle = LoadLibraryExW(lib_path_utf16, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+        }
     }
+
     return lib_handle;
 }
 static inline const char *loader_platform_open_library_error(const char *libPath) {
