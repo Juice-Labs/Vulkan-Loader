@@ -460,7 +460,7 @@ struct loader_icd_term_dispatch {
     PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV GetPhysicalDeviceOpticalFlowImageFormatsNV;
 
     // ---- VK_JUICE_juda extension commands
-    PFN_vkGetJuiceClientJUICE GetJuiceClientJUICE;
+    PFN_vkGetRemoteGPUClientJUICE GetRemoteGPUClientJUICE;
 };
 
 struct loader_instance_extension_enables {

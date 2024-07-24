@@ -287,7 +287,7 @@ typedef struct VkLayerInstanceDispatchTable_ {
     PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV GetPhysicalDeviceOpticalFlowImageFormatsNV;
 
     // ---- VK_JUICE_juda extension commands
-    PFN_vkGetJuiceClientJUICE GetJuiceClientJUICE;
+    PFN_vkGetRemoteGPUClientJUICE GetRemoteGPUClientJUICE;
 } VkLayerInstanceDispatchTable;
 
 // Device function pointer dispatch table

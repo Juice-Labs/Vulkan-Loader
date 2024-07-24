@@ -311,7 +311,7 @@ VKAPI_ATTR bool VKAPI_CALL loader_icd_init_entries(struct loader_instance* inst,
     LOOKUP_GIPA(GetPhysicalDeviceOpticalFlowImageFormatsNV);
 
     // ---- VK_JUICE_juda extension commands
-    LOOKUP_GIPA(GetJuiceClientJUICE);
+    LOOKUP_GIPA(GetRemoteGPUClientJUICE);
 
 #undef LOOKUP_REQUIRED_GIPA
 #undef LOOKUP_GIPA
@@ -1457,7 +1457,7 @@ VKAPI_ATTR void VKAPI_CALL loader_init_instance_extension_dispatch_table(VkLayer
     table->GetPhysicalDeviceOpticalFlowImageFormatsNV = (PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV)gpa(inst, "vkGetPhysicalDeviceOpticalFlowImageFormatsNV");
 
     // ---- VK_JUICE_juda extension commands
-    table->GetJuiceClientJUICE = (PFN_vkGetJuiceClientJUICE)gpa(inst, "vkGetJuiceClientJUICE");
+    table->GetRemoteGPUClientJUICE = (PFN_vkGetRemoteGPUClientJUICE)gpa(inst, "vkGetRemoteGPUClientJUICE");
 }
 
 // Functions that required a terminator need to have a separate dispatch table which contains their corresponding
@@ -3217,7 +3217,7 @@ VKAPI_ATTR void* VKAPI_CALL loader_lookup_instance_dispatch_table(const VkLayerI
     if (!strcmp(name, "GetPhysicalDeviceOpticalFlowImageFormatsNV")) return (void *)table->GetPhysicalDeviceOpticalFlowImageFormatsNV;
 
     // ---- VK_JUICE_juda extension commands
-    if (!strcmp(name, "GetJuiceClientJUICE")) return (void *)table->GetJuiceClientJUICE;
+    if (!strcmp(name, "GetRemoteGPUClientJUICE")) return (void *)table->GetRemoteGPUClientJUICE;
 
     *found_name = false;
     return NULL;
@@ -9267,28 +9267,28 @@ VKAPI_ATTR uint64_t VKAPI_CALL QueryValueJUICE(
     return disp->QueryValueJUICE(device, queryInfo, synchronous);
 }
 
-VKAPI_ATTR void* VKAPI_CALL GetJuiceClientJUICE(
+VKAPI_ATTR void* VKAPI_CALL GetRemoteGPUClientJUICE(
     VkInstance                                  instance) {
     struct loader_instance *inst = loader_get_instance(instance);
     if (NULL == inst) {
         loader_log(
             NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-            "vkGetJuiceClientJUICE: Invalid instance [VUID-vkGetJuiceClientJUICE-instance-parameter]");
+            "vkGetRemoteGPUClientJUICE: Invalid instance [VUID-vkGetRemoteGPUClientJUICE-instance-parameter]");
         abort(); /* Intentionally fail so user can correct issue. */
     }
-    return inst->disp->layer_inst_disp.GetJuiceClientJUICE(instance);
+    return inst->disp->layer_inst_disp.GetRemoteGPUClientJUICE(instance);
 }
 
-VKAPI_ATTR void* VKAPI_CALL terminator_GetJuiceClientJUICE(
+VKAPI_ATTR void* VKAPI_CALL terminator_GetRemoteGPUClientJUICE(
     VkInstance                                  instance) {
     struct loader_instance *inst = loader_get_instance(instance);
     if (NULL == inst) {
         loader_log(
             NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-            "vkGetJuiceClientJUICE: Invalid instance [VUID-vkGetJuiceClientJUICE-instance-parameter]");
+            "vkGetRemoteGPUClientJUICE: Invalid instance [VUID-vkGetRemoteGPUClientJUICE-instance-parameter]");
         abort(); /* Intentionally fail so user can correct issue. */
     }
-    return inst->disp->layer_inst_disp.GetJuiceClientJUICE(instance);
+    return inst->disp->layer_inst_disp.GetRemoteGPUClientJUICE(instance);
 }
 
 
@@ -11312,8 +11312,8 @@ bool extension_instance_gpa(struct loader_instance *ptr_instance, const char *na
         *addr = (void *)QueryValueJUICE;
         return true;
     }
-    if (!strcmp("vkGetJuiceClientJUICE", name)) {
-        *addr = (void *)GetJuiceClientJUICE;
+    if (!strcmp("vkGetRemoteGPUClientJUICE", name)) {
+        *addr = (void *)GetRemoteGPUClientJUICE;
         return true;
     }
 
@@ -12181,7 +12181,7 @@ const VkLayerInstanceDispatchTable instance_disp = {
     .GetPhysicalDeviceOpticalFlowImageFormatsNV = terminator_GetPhysicalDeviceOpticalFlowImageFormatsNV,
 
     // ---- VK_JUICE_juda extension commands
-    .GetJuiceClientJUICE = terminator_GetJuiceClientJUICE,
+    .GetRemoteGPUClientJUICE = terminator_GetRemoteGPUClientJUICE,
 };
 
 // A null-terminated list of all of the instance extensions supported by the loader.

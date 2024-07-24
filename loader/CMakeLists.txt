@@ -339,7 +339,7 @@ if(WIN32)
     # msvc: vulkan-1.lib / vulkan-1.dll
     set_target_properties(vulkan
                           PROPERTIES
-                          OUTPUT_NAME juicevulkan-1)
+                          OUTPUT_NAME RemoteGPUvulkan-1)
     if(MINGW)
         # generate the same DLL with mingw
         set_target_properties(vulkan
@@ -509,7 +509,7 @@ if(WIN32)
     install(TARGETS vulkan
             RUNTIME DESTINATION ${CMAKE_INSTALL_JUICE_GPU})
 
-    install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/juicevulkan-1.pdb
+    install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/RemoteGPUvulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
 else()
     install(TARGETS vulkan
