@@ -181,6 +181,9 @@ end
     else()
         set(CMAKE_ASM_MASM_COMPILER_WORKS false)
     endif()
+
+    set(CMAKE_ASM_MASM_COMPILER_WORKS false)
+
     if(CMAKE_ASM_MASM_COMPILER_WORKS)
         add_executable(asm_offset asm_offset.c)
         target_link_libraries(asm_offset PRIVATE loader_specific_options)
