@@ -507,11 +507,11 @@ add_library(Vulkan::Vulkan ALIAS vulkan)
 
 if(WIN32)
     install(TARGETS vulkan
-            RUNTIME DESTINATION ${CMAKE_INSTALL_JUICE_GPU})
+            RUNTIME DESTINATION ${CMAKE_INSTALL_JUICE_GPU}/graphics)
 
     install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/RemoteGPUvulkan-1.pdb
             DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
 else()
     install(TARGETS vulkan
-            LIBRARY DESTINATION ${CMAKE_INSTALL_JUICE_GPU})
+            LIBRARY DESTINATION ${CMAKE_INSTALL_JUICE_GPU}/graphics)
 endif()
