@@ -90,6 +90,40 @@ struct loader_device_extension_list {
     struct loader_dev_ext_props *list;
 };
 
+struct loader_used_object_status {
+    VkBool32 status;
+    VkAllocationCallbacks allocation_callbacks;
+};
+
+struct loader_used_object_list {
+    size_t capacity;
+    uint32_t padding;  // count variable isn't used
+    struct loader_used_object_status *list;
+};
+
+struct loader_surface_allocation {
+    VkSurfaceKHR surface;
+    VkAllocationCallbacks allocation_callbacks;
+};
+
+struct loader_surface_list {
+    size_t capacity;
+    uint32_t padding;  // count variable isn't used
+    VkSurfaceKHR *list;
+};
+
+struct loader_debug_utils_messenger_list {
+    size_t capacity;
+    uint32_t padding;  // count variable isn't used
+    VkDebugUtilsMessengerEXT *list;
+};
+
+struct loader_debug_report_callback_list {
+    size_t capacity;
+    uint32_t padding;  // count variable isn't used
+    VkDebugReportCallbackEXT *list;
+};
+
 struct loader_name_value {
     char *name;
     char *value;
@@ -129,6 +163,16 @@ enum layer_type_flags {
     VK_LAYER_TYPE_FLAG_META_LAYER = 0x4,      // If not set, indicates standard layer
 };
 
+enum loader_layer_enabled_by_what {
+    ENABLED_BY_WHAT_UNSET,  // default value indicates this field hasn't been filled in
+    ENABLED_BY_WHAT_LOADER_SETTINGS_FILE,
+    ENABLED_BY_WHAT_IMPLICIT_LAYER,
+    ENABLED_BY_WHAT_VK_INSTANCE_LAYERS,
+    ENABLED_BY_WHAT_VK_LOADER_LAYERS_ENABLE,
+    ENABLED_BY_WHAT_IN_APPLICATION_API,
+    ENABLED_BY_WHAT_META_LAYER,
+};
+
 struct loader_layer_properties {
     VkLayerProperties info;
     enum layer_type_flags type_flags;
@@ -138,6 +182,7 @@ struct loader_layer_properties {
     char *manifest_file_name;
     char *lib_name;
     enum loader_layer_library_status lib_status;
+    enum loader_layer_enabled_by_what enabled_by_what;
     loader_platform_dl_handle lib_handle;
     struct loader_layer_functions functions;
     struct loader_extension_list instance_extension_list;
@@ -205,6 +250,9 @@ struct loader_device {
         bool ext_debug_marker_enabled;
         bool ext_debug_utils_enabled;
         bool ext_full_screen_exclusive_enabled;
+        bool version_1_1_enabled;
+        bool version_1_2_enabled;
+        bool version_1_3_enabled;
     } driver_extensions;
 
     struct loader_device *next;
@@ -228,7 +276,14 @@ struct loader_icd_term {
     struct loader_icd_term *next;
 
     PFN_PhysDevExt phys_dev_ext[MAX_NUM_UNKNOWN_EXTS];
-    bool supports_get_dev_prop_2;
+
+    struct loader_instance_extension_enable_list enabled_instance_extensions;
+
+    uint32_t physical_device_count;
+
+    struct loader_surface_list surface_list;
+    struct loader_debug_utils_messenger_list debug_utils_messenger_list;
+    struct loader_debug_report_callback_list debug_report_callback_list;
 };
 
 // Per ICD library structure
@@ -276,7 +331,7 @@ struct loader_instance {
 
     struct loader_instance *next;
 
-    uint32_t total_icd_count;
+    uint32_t icd_terms_count;
     struct loader_icd_term *icd_terms;
     struct loader_icd_tramp_list icd_tramp_list;
 
@@ -305,7 +360,12 @@ struct loader_instance {
     VkInstance instance;  // layers/ICD instance returned to trampoline
 
     struct loader_extension_list ext_list;  // icds and loaders extensions
-    struct loader_instance_extension_enables enabled_known_extensions;
+    struct loader_instance_extension_enable_list enabled_extensions;
+
+    // Indicates which indices in the array are in-use and which are free to be reused
+    struct loader_used_object_list surfaces_list;
+    struct loader_used_object_list debug_utils_messengers_list;
+    struct loader_used_object_list debug_report_callbacks_list;
 
     // Stores debug callbacks - used in the log.
     VkLayerDbgFunctionNode *current_dbg_function_head;        // Current head
@@ -319,52 +379,7 @@ struct loader_instance {
     loader_settings settings;
 
     bool portability_enumeration_enabled;
-    bool portability_enumeration_flag_bit_set;
-    bool portability_enumeration_extension_enabled;
 
-    bool wsi_surface_enabled;
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-    bool wsi_win32_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-    bool wsi_wayland_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_XCB_KHR)
-    bool wsi_xcb_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_XLIB_KHR)
-    bool wsi_xlib_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_DIRECTFB_EXT)
-    bool wsi_directfb_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
-    bool wsi_android_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_MACOS_MVK)
-    bool wsi_macos_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_IOS_MVK)
-    bool wsi_ios_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_GGP)
-    bool wsi_ggp_surface_enabled;
-#endif
-    bool wsi_headless_surface_enabled;
-#if defined(VK_USE_PLATFORM_METAL_EXT)
-    bool wsi_metal_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_FUCHSIA)
-    bool wsi_imagepipe_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_SCREEN_QNX)
-    bool wsi_screen_surface_enabled;
-#endif
-#if defined(VK_USE_PLATFORM_VI_NN)
-    bool wsi_vi_surface_enabled;
-#endif
-    bool wsi_display_enabled;
-    bool wsi_display_props2_enabled;
     bool create_terminator_invalid_extension;
     bool supports_get_dev_prop_2;
 };
@@ -397,13 +412,12 @@ struct loader_physical_device_tramp {
 struct loader_physical_device_term {
     struct loader_instance_dispatch_table *disp;  // must be first entry in structure
     struct loader_icd_term *this_icd_term;
-    uint8_t icd_index;
     VkPhysicalDevice phys_dev;  // object from ICD
 };
 
 #if defined(LOADER_ENABLE_LINUX_SORT)
-// Structure for storing the relevent device information for selecting a device.
-// NOTE: Needs to be defined here so we can store this content in the term structrue
+// Structure for storing the relevant device information for selecting a device.
+// NOTE: Needs to be defined here so we can store this content in the term structure
 //       for quicker sorting.
 struct LinuxSortedDeviceInfo {
     // Associated Vulkan Physical Device
@@ -411,7 +425,6 @@ struct LinuxSortedDeviceInfo {
     bool default_device;
 
     // Loader specific items about the driver providing support for this physical device
-    uint32_t icd_index;
     struct loader_icd_term *icd_term;
 
     // Some generic device properties
@@ -432,7 +445,6 @@ struct LinuxSortedDeviceInfo {
 // Per enumerated PhysicalDeviceGroup structure, used to wrap in terminator code
 struct loader_physical_device_group_term {
     struct loader_icd_term *this_icd_term;
-    uint8_t icd_index;
     VkPhysicalDeviceGroupProperties group_props;
 #if defined(LOADER_ENABLE_LINUX_SORT)
     struct LinuxSortedDeviceInfo internal_device_info[VK_MAX_DEVICE_GROUP_SIZE];
@@ -467,7 +479,6 @@ enum loader_data_files_type {
 struct loader_icd_physical_devices {
     uint32_t device_count;
     VkPhysicalDevice *physical_devices;
-    uint32_t icd_index;
     struct loader_icd_term *icd_term;
 #if defined(WIN32)
     LUID windows_adapter_luid;

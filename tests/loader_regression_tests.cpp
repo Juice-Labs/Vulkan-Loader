@@ -2,6 +2,8 @@
  * Copyright (c) 2021-2023 The Khronos Group Inc.
  * Copyright (c) 2021-2023 Valve Corporation
  * Copyright (c) 2021-2023 LunarG, Inc.
+ * Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023-2023 RasterGrid Kft.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and/or associated documentation files (the "Materials"), to
@@ -392,7 +394,7 @@ TEST(EnumerateDeviceExtensionProperties, ZeroPhysicalDeviceExtensions) {
 
     InstWrapper inst{env.vulkan_functions};
     inst.create_info.set_api_version(VK_MAKE_API_VERSION(0, 1, 1, 0));
-    inst.CheckCreate(VK_SUCCESS);
+    inst.CheckCreate();
 
     auto phys_dev = inst.GetPhysDev();
     DeviceWrapper dev{inst};
@@ -808,7 +810,7 @@ TEST(EnumeratePhysicalDevices, ZeroPhysicalDevices) {
     env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2));
     InstWrapper inst{env.vulkan_functions};
     inst.create_info.set_api_version(VK_MAKE_API_VERSION(0, 1, 1, 0));
-    inst.CheckCreate(VK_SUCCESS);
+    inst.CheckCreate();
 
     uint32_t count = 0;
     ASSERT_EQ(VK_ERROR_INITIALIZATION_FAILED, env.vulkan_functions.vkEnumeratePhysicalDevices(inst, &count, nullptr));
@@ -1161,6 +1163,66 @@ TEST(EnumeratePhysicalDevices, MultipleAddRemoves) {
     ASSERT_GE(found_items[6], 4U);
 }
 
+TEST(EnumeratePhysicalDevices, OneDriverWithWrongErrorCodes) {
+    FrameworkEnvironment env;
+    env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2));
+
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.set_api_version(VK_API_VERSION_1_1);
+    inst.CheckCreate();
+
+    {
+        env.get_test_icd().set_enum_physical_devices_return_code(VK_ERROR_INITIALIZATION_FAILED);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_ERROR_INITIALIZATION_FAILED,
+                  env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 0);
+    }
+    {
+        env.get_test_icd().set_enum_physical_devices_return_code(VK_ERROR_INCOMPATIBLE_DRIVER);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_ERROR_INITIALIZATION_FAILED,
+                  env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 0);
+    }
+    {
+        env.get_test_icd().set_enum_physical_devices_return_code(VK_ERROR_SURFACE_LOST_KHR);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_ERROR_INITIALIZATION_FAILED,
+                  env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 0);
+    }
+}
+
+TEST(EnumeratePhysicalDevices, TwoDriversOneWithWrongErrorCodes) {
+    FrameworkEnvironment env;
+    env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2)).add_physical_device({});
+    TestICD& icd1 = env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2));
+
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.set_api_version(VK_API_VERSION_1_1);
+    inst.CheckCreate();
+
+    {
+        icd1.set_enum_physical_devices_return_code(VK_ERROR_INITIALIZATION_FAILED);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 1);
+    }
+    {
+        icd1.set_enum_physical_devices_return_code(VK_ERROR_INCOMPATIBLE_DRIVER);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 1);
+    }
+    {
+        icd1.set_enum_physical_devices_return_code(VK_ERROR_SURFACE_LOST_KHR);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 1);
+    }
+}
+
 TEST(CreateDevice, ExtensionNotPresent) {
     FrameworkEnvironment env{};
     env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2)).add_physical_device("physical_device_0");
@@ -1335,8 +1397,8 @@ TEST(TryLoadWrongBinaries, WrongICD) {
 #if _WIN32 || _WIN64
     ASSERT_TRUE(log.find("Failed to open dynamic library"));
 #endif
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__GNU__)
-#if defined(__x86_64__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__GNU__) || defined(__QNX__)
+#if defined(__x86_64__) || __ppc64__ || __aarch64__
     ASSERT_TRUE(log.find("wrong ELF class: ELFCLASS32"));
 #else
     ASSERT_TRUE(log.find("wrong ELF class: ELFCLASS64"));
@@ -1398,7 +1460,7 @@ TEST(TryLoadWrongBinaries, WrongImplicit) {
 
     // We don't want to return VK_ERROR_LAYER_NOT_PRESENT for missing implicit layers because it's not the
     // application asking for them.
-    inst.CheckCreate(VK_SUCCESS);
+    inst.CheckCreate();
 
 #if !defined(__APPLE__)
     // Should get an info message for the bad implicit layer
@@ -1507,8 +1569,12 @@ TEST(TryLoadWrongBinaries, BadExplicit) {
     // Explicit layer not found should generate a VK_ERROR_LAYER_NOT_PRESENT error message.
     inst.CheckCreate(VK_ERROR_LAYER_NOT_PRESENT);
 
-    // Should get an error message for the bad explicit
+// Should get an error message for the bad explicit
+#if defined(WIN32)
+    ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name) + std::string("\" was wrong bit-type!")));
+#else
     ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name) + std::string("\" failed to load!")));
+#endif  // defined(WIN32)
 }
 
 TEST(TryLoadWrongBinaries, BadImplicit) {
@@ -1531,10 +1597,14 @@ TEST(TryLoadWrongBinaries, BadImplicit) {
 
     // We don't want to return VK_ERROR_LAYER_NOT_PRESENT for missing implicit layers because it's not the
     // application asking for them.
-    inst.CheckCreate(VK_SUCCESS);
+    inst.CheckCreate();
 
     // Should get an info message for the bad implicit
+#if defined(WIN32)
+    ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name) + std::string("\" was wrong bit-type.")));
+#else
     ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name) + std::string("\" failed to load.")));
+#endif  // defined(WIN32)
 }
 
 TEST(TryLoadWrongBinaries, BadExplicitAndImplicit) {
@@ -1563,10 +1633,13 @@ TEST(TryLoadWrongBinaries, BadExplicitAndImplicit) {
 
     // Explicit layer not found should generate a VK_ERROR_LAYER_NOT_PRESENT error message.
     inst.CheckCreate(VK_ERROR_LAYER_NOT_PRESENT);
-
-    // Apple only throws a wrong library type of error
+#if defined(WIN32)
+    ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name_0) + std::string("\" was wrong bit-type!")));
+    ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name_1) + std::string("\" was wrong bit-type.")));
+#else
     ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name_0) + std::string("\" failed to load!")));
     ASSERT_TRUE(log.find(std::string("Requested layer \"") + std::string(layer_name_1) + std::string("\" failed to load.")));
+#endif  // defined(WIN32)
 }
 
 TEST(TryLoadWrongBinaries, WrongArchDriver) {
@@ -1601,7 +1674,8 @@ TEST(TryLoadWrongBinaries, WrongArchLayer) {
     FillDebugUtilsCreateDetails(inst.create_info, log);
     inst.create_info.add_layer(layer_name);
     inst.CheckCreate(VK_ERROR_LAYER_NOT_PRESENT);
-    ASSERT_TRUE(log.find("Layer library architecture doesn't match the current running architecture, skipping this layer"));
+    ASSERT_TRUE(log.find(std::string("The library architecture in layer ") + env.get_shimmed_layer_manifest_path(0).string() +
+                         " doesn't match the current running architecture, skipping this layer"));
 }
 
 TEST(EnumeratePhysicalDeviceGroups, OneCall) {
@@ -1657,7 +1731,7 @@ TEST(EnumeratePhysicalDeviceGroups, OneCall) {
             ASSERT_EQ(true, found[dev]);
         }
         for (auto& group : group_props) {
-            VkDeviceGroupDeviceCreateInfoKHR group_info{};
+            VkDeviceGroupDeviceCreateInfo group_info{};
             group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
             group_info.physicalDeviceCount = group.physicalDeviceCount;
             group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -1675,7 +1749,7 @@ TEST(EnumeratePhysicalDeviceGroups, OneCall) {
             const VkBaseInStructure* pNext = reinterpret_cast<const VkBaseInStructure*>(dev.create_info.dev.pNext);
             while (pNext != nullptr) {
                 if (pNext->sType == VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO) {
-                    ASSERT_EQ(&group_info, reinterpret_cast<const VkDeviceGroupDeviceCreateInfoKHR*>(pNext));
+                    ASSERT_EQ(&group_info, reinterpret_cast<const VkDeviceGroupDeviceCreateInfo*>(pNext));
                 }
                 if (pNext->sType == 100000) {
                     ASSERT_EQ(&spacer_structure, pNext);
@@ -1702,8 +1776,8 @@ TEST(EnumeratePhysicalDeviceGroups, OneCall) {
 
         uint32_t group_count = static_cast<uint32_t>(driver.physical_device_groups.size());
         uint32_t returned_group_count = group_count;
-        std::vector<VkPhysicalDeviceGroupPropertiesKHR> group_props{};
-        group_props.resize(group_count, VkPhysicalDeviceGroupPropertiesKHR{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES_KHR});
+        std::vector<VkPhysicalDeviceGroupProperties> group_props{};
+        group_props.resize(group_count, VkPhysicalDeviceGroupProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES});
         ASSERT_EQ(VK_SUCCESS, vkEnumeratePhysicalDeviceGroupsKHR(inst, &returned_group_count, group_props.data()));
         ASSERT_EQ(group_count, returned_group_count);
 
@@ -1724,7 +1798,7 @@ TEST(EnumeratePhysicalDeviceGroups, OneCall) {
             ASSERT_EQ(true, found[dev]);
         }
         for (auto& group : group_props) {
-            VkDeviceGroupDeviceCreateInfoKHR group_info{};
+            VkDeviceGroupDeviceCreateInfo group_info{};
             group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
             group_info.physicalDeviceCount = group.physicalDeviceCount;
             group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -1794,7 +1868,7 @@ TEST(EnumeratePhysicalDeviceGroups, TwoCall) {
             ASSERT_EQ(true, found[dev]);
         }
         for (auto& group : group_props) {
-            VkDeviceGroupDeviceCreateInfoKHR group_info{};
+            VkDeviceGroupDeviceCreateInfo group_info{};
             group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
             group_info.physicalDeviceCount = group.physicalDeviceCount;
             group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -1822,8 +1896,8 @@ TEST(EnumeratePhysicalDeviceGroups, TwoCall) {
         ASSERT_EQ(VK_SUCCESS, vkEnumeratePhysicalDeviceGroupsKHR(inst, &returned_group_count, nullptr));
         ASSERT_EQ(group_count, returned_group_count);
 
-        std::vector<VkPhysicalDeviceGroupPropertiesKHR> group_props{};
-        group_props.resize(group_count, VkPhysicalDeviceGroupPropertiesKHR{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES_KHR});
+        std::vector<VkPhysicalDeviceGroupProperties> group_props{};
+        group_props.resize(group_count, VkPhysicalDeviceGroupProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES});
         ASSERT_EQ(VK_SUCCESS, vkEnumeratePhysicalDeviceGroupsKHR(inst, &returned_group_count, group_props.data()));
         ASSERT_EQ(group_count, returned_group_count);
 
@@ -1844,7 +1918,7 @@ TEST(EnumeratePhysicalDeviceGroups, TwoCall) {
             ASSERT_EQ(true, found[dev]);
         }
         for (auto& group : group_props) {
-            VkDeviceGroupDeviceCreateInfoKHR group_info{};
+            VkDeviceGroupDeviceCreateInfo group_info{};
             group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
             group_info.physicalDeviceCount = group.physicalDeviceCount;
             group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -1896,21 +1970,12 @@ TEST(EnumeratePhysicalDeviceGroups, TwoCallIncomplete) {
         ASSERT_EQ(VK_SUCCESS, inst->vkEnumeratePhysicalDeviceGroups(inst, &returned_group_count, group_props_2.data()));
         ASSERT_EQ(2U, returned_group_count);
 
-        // Make sure the incomplete group items appear in the complete group
-        for (uint32_t inc_group = 0; inc_group < 1; ++inc_group) {
-            bool found = false;
-            for (uint32_t full_group = 0; full_group < 2; ++full_group) {
-                if (group_props[inc_group].physicalDeviceCount == group_props_2[full_group].physicalDeviceCount &&
-                    group_props[inc_group].physicalDevices[0] == group_props_2[full_group].physicalDevices[0] &&
-                    group_props[inc_group].physicalDevices[1] == group_props_2[full_group].physicalDevices[1]) {
-                    found = true;
-                    break;
-                }
-            }
-            ASSERT_EQ(true, found);
-        }
+        ASSERT_EQ(group_props[0].physicalDeviceCount, group_props_2[0].physicalDeviceCount);
+        ASSERT_EQ(group_props[0].physicalDevices[0], group_props_2[0].physicalDevices[0]);
+        ASSERT_EQ(group_props[0].physicalDevices[1], group_props_2[0].physicalDevices[1]);
+
         for (auto& group : group_props) {
-            VkDeviceGroupDeviceCreateInfoKHR group_info{};
+            VkDeviceGroupDeviceCreateInfo group_info{};
             group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
             group_info.physicalDeviceCount = group.physicalDeviceCount;
             group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -1934,33 +1999,24 @@ TEST(EnumeratePhysicalDeviceGroups, TwoCallIncomplete) {
         ASSERT_EQ(group_count, returned_group_count);
 
         returned_group_count = 1;
-        std::array<VkPhysicalDeviceGroupPropertiesKHR, 1> group_props{};
+        std::array<VkPhysicalDeviceGroupProperties, 1> group_props{};
         group_props[0].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES;
         ASSERT_EQ(VK_INCOMPLETE, vkEnumeratePhysicalDeviceGroupsKHR(inst, &returned_group_count, group_props.data()));
         ASSERT_EQ(1U, returned_group_count);
 
         returned_group_count = 2;
-        std::array<VkPhysicalDeviceGroupPropertiesKHR, 2> group_props_2{};
+        std::array<VkPhysicalDeviceGroupProperties, 2> group_props_2{};
         group_props_2[0].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES;
         group_props_2[1].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES;
         ASSERT_EQ(VK_SUCCESS, vkEnumeratePhysicalDeviceGroupsKHR(inst, &returned_group_count, group_props_2.data()));
         ASSERT_EQ(2U, returned_group_count);
 
-        // Make sure the incomplete group items appear in the complete group
-        for (uint32_t inc_group = 0; inc_group < 1; ++inc_group) {
-            bool found = false;
-            for (uint32_t full_group = 0; full_group < 2; ++full_group) {
-                if (group_props[inc_group].physicalDeviceCount == group_props_2[full_group].physicalDeviceCount &&
-                    group_props[inc_group].physicalDevices[0] == group_props_2[full_group].physicalDevices[0] &&
-                    group_props[inc_group].physicalDevices[1] == group_props_2[full_group].physicalDevices[1]) {
-                    found = true;
-                    break;
-                }
-            }
-            ASSERT_EQ(true, found);
-        }
+        ASSERT_EQ(group_props[0].physicalDeviceCount, group_props_2[0].physicalDeviceCount);
+        ASSERT_EQ(group_props[0].physicalDevices[0], group_props_2[0].physicalDevices[0]);
+        ASSERT_EQ(group_props[0].physicalDevices[1], group_props_2[0].physicalDevices[1]);
+
         for (auto& group : group_props) {
-            VkDeviceGroupDeviceCreateInfoKHR group_info{};
+            VkDeviceGroupDeviceCreateInfo group_info{};
             group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
             group_info.physicalDeviceCount = group.physicalDeviceCount;
             group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2000,7 +2056,7 @@ TEST(EnumeratePhysicalDeviceGroups, TestCoreVersusExtensionSameReturns) {
     uint32_t core_group_count = 0;
     std::vector<VkPhysicalDeviceGroupProperties> core_group_props{};
     uint32_t ext_group_count = 0;
-    std::vector<VkPhysicalDeviceGroupPropertiesKHR> ext_group_props{};
+    std::vector<VkPhysicalDeviceGroupProperties> ext_group_props{};
 
     InstWrapper inst{env.vulkan_functions};
     inst.create_info.set_api_version(1, 1, 0);
@@ -2026,7 +2082,7 @@ TEST(EnumeratePhysicalDeviceGroups, TestCoreVersusExtensionSameReturns) {
     ASSERT_EQ(ext_group_count, returned_group_count);
 
     ext_group_props.resize(returned_group_count,
-                           VkPhysicalDeviceGroupPropertiesKHR{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES_KHR});
+                           VkPhysicalDeviceGroupProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES});
     ASSERT_EQ(VK_SUCCESS, vkEnumeratePhysicalDeviceGroupsKHR(inst, &returned_group_count, ext_group_props.data()));
     ASSERT_EQ(ext_group_count, returned_group_count);
 
@@ -2051,7 +2107,7 @@ TEST(EnumeratePhysicalDeviceGroups, TestCoreVersusExtensionSameReturns) {
         }
     }
     for (auto& group : core_group_props) {
-        VkDeviceGroupDeviceCreateInfoKHR group_info{};
+        VkDeviceGroupDeviceCreateInfo group_info{};
         group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
         group_info.physicalDeviceCount = group.physicalDeviceCount;
         group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2146,7 +2202,7 @@ TEST(EnumeratePhysicalDeviceGroups, CallThriceAddGroupInBetween) {
         }
     }
     for (auto& group : group_props_after) {
-        VkDeviceGroupDeviceCreateInfoKHR group_info{};
+        VkDeviceGroupDeviceCreateInfo group_info{};
         group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
         group_info.physicalDeviceCount = group.physicalDeviceCount;
         group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2233,7 +2289,7 @@ TEST(EnumeratePhysicalDeviceGroups, CallTwiceRemoveGroupInBetween) {
         }
     }
     for (auto& group : group_props_after) {
-        VkDeviceGroupDeviceCreateInfoKHR group_info{};
+        VkDeviceGroupDeviceCreateInfo group_info{};
         group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
         group_info.physicalDeviceCount = group.physicalDeviceCount;
         group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2319,7 +2375,7 @@ TEST(EnumeratePhysicalDeviceGroups, CallTwiceAddDeviceInBetween) {
         }
     }
     for (auto& group : group_props_after) {
-        VkDeviceGroupDeviceCreateInfoKHR group_info{};
+        VkDeviceGroupDeviceCreateInfo group_info{};
         group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
         group_info.physicalDeviceCount = group.physicalDeviceCount;
         group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2416,7 +2472,7 @@ TEST(EnumeratePhysicalDeviceGroups, CallTwiceRemoveDeviceInBetween) {
         }
     }
     for (auto& group : group_props_after) {
-        VkDeviceGroupDeviceCreateInfoKHR group_info{};
+        VkDeviceGroupDeviceCreateInfo group_info{};
         group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
         group_info.physicalDeviceCount = group.physicalDeviceCount;
         group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2534,7 +2590,7 @@ TEST(EnumeratePhysicalDeviceGroups, MultipleAddRemoves) {
         ASSERT_EQ(group_props_after_add_device[group].physicalDeviceCount, after_add_dev_expected_counts[group]);
     }
     for (auto& group : group_props_after_add_device) {
-        VkDeviceGroupDeviceCreateInfoKHR group_info{};
+        VkDeviceGroupDeviceCreateInfo group_info{};
         group_info.sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO;
         group_info.physicalDeviceCount = group.physicalDeviceCount;
         group_info.pPhysicalDevices = &group.physicalDevices[0];
@@ -2742,7 +2798,7 @@ TEST(CreateInstance, InstanceNullExtensionPtr) {
     ASSERT_EQ(env.vulkan_functions.vkCreateInstance(&info, VK_NULL_HANDLE, &inst), VK_ERROR_EXTENSION_NOT_PRESENT);
 }
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__GNU__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__GNU__) || defined(__QNX__)
 // NOTE: Sort order only affects Linux
 TEST(SortedPhysicalDevices, DevicesSortEnabled10NoAppExt) {
     FrameworkEnvironment env{};
@@ -3152,52 +3208,31 @@ TEST(SortedPhysicalDevices, DevicesSortedDisabled) {
     ASSERT_EQ(VK_SUCCESS, instance->vkEnumeratePhysicalDevices(instance, &device_count, physical_devices.data()));
     ASSERT_EQ(device_count, max_phys_devs);
 
-    // Make sure the devices are not in the sorted order.  The order is really undefined, but the chances of
-    // it being exactly the expected sorted is very low.
-    bool sorted = true;
-    for (uint32_t dev = 0; dev < device_count; ++dev) {
-        VkPhysicalDeviceProperties props{};
-        instance->vkGetPhysicalDeviceProperties(physical_devices[dev], &props);
+    // make sure the order is what we started with - but its a bit wonky due to the loader reading physical devices "backwards"
+    VkPhysicalDeviceProperties props{};
+    instance->vkGetPhysicalDeviceProperties(physical_devices[0], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU);
+    ASSERT_STREQ(props.deviceName, "pd5");
 
-        switch (dev) {
-            case 0:
-                if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd4", props.deviceName)) {
-                    sorted = false;
-                }
-                break;
-            case 1:
-                if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd0", props.deviceName)) {
-                    sorted = false;
-                }
-                break;
-            case 2:
-                if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd3", props.deviceName)) {
-                    sorted = false;
-                }
-                break;
-            case 3:
-                if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU || strcmp("pd1", props.deviceName)) {
-                    sorted = false;
-                }
-                break;
-            case 4:
-                if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU || strcmp("pd5", props.deviceName)) {
-                    sorted = false;
-                }
-                break;
-            case 5:
-                if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU || strcmp("pd2", props.deviceName)) {
-                    sorted = false;
-                }
-                break;
-            default:
-                ASSERT_EQ(false, true);
-        }
-        if (!sorted) {
-            break;
-        }
-    }
-    ASSERT_EQ(false, sorted);
+    instance->vkGetPhysicalDeviceProperties(physical_devices[1], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd3");
+
+    instance->vkGetPhysicalDeviceProperties(physical_devices[2], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd4");
+
+    instance->vkGetPhysicalDeviceProperties(physical_devices[3], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_CPU);
+    ASSERT_STREQ(props.deviceName, "pd2");
+
+    instance->vkGetPhysicalDeviceProperties(physical_devices[4], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd0");
+
+    instance->vkGetPhysicalDeviceProperties(physical_devices[5], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
+    ASSERT_STREQ(props.deviceName, "pd1");
 
     // Make sure if we call enumerate again, the information is the same
     std::array<VkPhysicalDevice, max_phys_devs> physical_devices_again;
@@ -3499,64 +3534,39 @@ TEST(SortedPhysicalDevices, DeviceGroupsSortedDisabled) {
     ASSERT_EQ(VK_SUCCESS, inst->vkEnumeratePhysicalDeviceGroups(inst, &group_count, physical_device_groups.data()));
     ASSERT_EQ(group_count, max_phys_dev_groups);
 
-    // Make sure the devices are not in the sorted order.  The order is really undefined, but the chances of
-    // it being exactly the expected sorted is very low.
-    bool sorted = true;
-    uint32_t cur_dev = 0;
-    for (uint32_t group = 0; group < max_phys_dev_groups; ++group) {
-        for (uint32_t dev = 0; dev < physical_device_groups[group].physicalDeviceCount; ++dev) {
-            VkPhysicalDeviceProperties props{};
-            inst->vkGetPhysicalDeviceProperties(physical_device_groups[group].physicalDevices[dev], &props);
-            switch (cur_dev++) {
-                case 0:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd4", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 1:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd6", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 2:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd5", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 3:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd2", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 4:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || strcmp("pd0", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 5:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU || strcmp("pd1", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 6:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU || strcmp("pd7", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                case 7:
-                    if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU || strcmp("pd3", props.deviceName)) {
-                        sorted = false;
-                    }
-                    break;
-                default:
-                    ASSERT_EQ(false, true);
-            }
-        }
-        if (!sorted) {
-            break;
-        }
-    }
-    ASSERT_EQ(false, sorted);
+    // make sure the order is what we started with - but its a bit wonky due to the loader reading physical devices "backwards"
+    VkPhysicalDeviceProperties props{};
+    inst->vkGetPhysicalDeviceProperties(physical_devices[0], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU);
+    ASSERT_STREQ(props.deviceName, "pd7");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[1], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd4");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[2], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd5");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[3], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd6");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[4], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_CPU);
+    ASSERT_STREQ(props.deviceName, "pd3");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[5], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd0");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[6], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
+    ASSERT_STREQ(props.deviceName, "pd1");
+
+    inst->vkGetPhysicalDeviceProperties(physical_devices[7], &props);
+    ASSERT_EQ(props.deviceType, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    ASSERT_STREQ(props.deviceName, "pd2");
 
     // Make sure if we call enumerate again, the information is the same
     std::array<VkPhysicalDeviceGroupProperties, max_phys_dev_groups> physical_device_groups_again{};
@@ -3804,13 +3814,53 @@ TEST(PortabilityICDConfiguration, PortabilityAndRegularICDPreInstanceFunctions) 
 }
 
 #if defined(_WIN32)
-TEST(AppPackageDriverDiscovery, AppPackageTest) {
+TEST(AppPackageDiscovery, AppPackageDrivers) {
     FrameworkEnvironment env;
     env.add_icd(TestICDDetails{TEST_ICD_PATH_VERSION_2}.set_discovery_type(ManifestDiscoveryType::windows_app_package))
         .add_physical_device({});
 
     InstWrapper inst{env.vulkan_functions};
     inst.CheckCreate();
+}
+TEST(AppPackageDiscovery, AppPackageLayers) {
+    FrameworkEnvironment env{};
+    env.add_icd(TestICDDetails(ManifestICD{}.set_lib_path(TEST_ICD_PATH_VERSION_2))).add_physical_device({});
+
+    const char* layer_name = "VK_LAYER_test_package_layer";
+    env.add_implicit_layer(TestLayerDetails(ManifestLayer{}.add_layer(ManifestLayer::LayerDescription{}
+                                                                          .set_name(layer_name)
+                                                                          .set_lib_path(TEST_LAYER_PATH_EXPORT_VERSION_2)
+                                                                          .set_disable_environment("DISABLE_ME")),
+                                            "test_package_layer.json")
+                               .set_discovery_type(ManifestDiscoveryType::windows_app_package));
+
+    InstWrapper inst{env.vulkan_functions};
+    inst.CheckCreate();
+
+    auto layers = inst.GetActiveLayers(inst.GetPhysDev(), 1U);
+    ASSERT_EQ(layers.size(), 1);
+    ASSERT_TRUE(string_eq(layers.at(0).layerName, layer_name));
+}
+
+TEST(AppPackageDiscovery, AppPackageICDAndLayers) {
+    FrameworkEnvironment env{};
+    env.add_icd(TestICDDetails{TEST_ICD_PATH_VERSION_2}.set_discovery_type(ManifestDiscoveryType::windows_app_package))
+        .add_physical_device({});
+
+    const char* layer_name = "VK_LAYER_test_package_layer";
+    env.add_implicit_layer(TestLayerDetails(ManifestLayer{}.add_layer(ManifestLayer::LayerDescription{}
+                                                                          .set_name(layer_name)
+                                                                          .set_lib_path(TEST_LAYER_PATH_EXPORT_VERSION_2)
+                                                                          .set_disable_environment("DISABLE_ME")),
+                                            "test_package_layer.json")
+                               .set_discovery_type(ManifestDiscoveryType::windows_app_package));
+
+    InstWrapper inst{env.vulkan_functions};
+    inst.CheckCreate();
+
+    auto layers = inst.GetActiveLayers(inst.GetPhysDev(), 1U);
+    ASSERT_EQ(layers.size(), 1);
+    ASSERT_TRUE(string_eq(layers.at(0).layerName, layer_name));
 }
 
 // Make sure that stale layer manifests (path to nonexistant file) which have the same name as real manifests don't cause the real
@@ -3822,7 +3872,7 @@ TEST(DuplicateRegistryEntries, Layers) {
 
     auto null_path = env.get_folder(ManifestLocation::null).location() / "test_layer.json";
 
-    env.platform_shim->add_manifest(ManifestCategory::explicit_layer, null_path.str());
+    env.platform_shim->add_manifest(ManifestCategory::explicit_layer, null_path);
 
     const char* layer_name = "TestLayer";
     env.add_explicit_layer(
@@ -3840,7 +3890,7 @@ TEST(DuplicateRegistryEntries, Layers) {
 TEST(DuplicateRegistryEntries, Drivers) {
     FrameworkEnvironment env{};
     auto null_path = env.get_folder(ManifestLocation::null).location() / "test_icd_0.json";
-    env.platform_shim->add_manifest(ManifestCategory::icd, null_path.str());
+    env.platform_shim->add_manifest(ManifestCategory::icd, null_path);
 
     env.add_icd(TestICDDetails{TEST_ICD_PATH_VERSION_2_EXPORT_ICD_GPDPA}.set_discovery_type(ManifestDiscoveryType::null_dir))
         .add_physical_device("physical_device_0")
@@ -3850,16 +3900,16 @@ TEST(DuplicateRegistryEntries, Drivers) {
     InstWrapper inst{env.vulkan_functions};
     FillDebugUtilsCreateDetails(inst.create_info, env.debug_log);
     inst.CheckCreate();
-    ASSERT_TRUE(env.debug_log.find(
-        std::string("Skipping adding of json file \"") + null_path.str() +
-        "\" from registry \"HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\Vulkan\\Drivers\" to the list due to duplication"));
+    ASSERT_TRUE(env.debug_log.find(std::string("Skipping adding of json file \"") + null_path.string() +
+                                   "\" from registry \"HKEY_LOCAL_MACHINE\\" VK_DRIVERS_INFO_REGISTRY_LOC
+                                   "\" to the list due to duplication"));
 }
 #endif
 
 TEST(LibraryLoading, SystemLocations) {
     FrameworkEnvironment env{};
-    EnvVarWrapper ld_library_path("LD_LIBRARY_PATH", env.get_folder(ManifestLocation::driver).location().str());
-    ld_library_path.add_to_list(env.get_folder(ManifestLocation::explicit_layer).location().str());
+    EnvVarWrapper ld_library_path("LD_LIBRARY_PATH", env.get_folder(ManifestLocation::driver).location().string());
+    ld_library_path.add_to_list(env.get_folder(ManifestLocation::explicit_layer).location());
 
     auto& driver = env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2).set_library_path_type(LibraryPathType::default_search_paths))
                        .add_physical_device({});
@@ -3896,13 +3946,11 @@ TEST(ManifestDiscovery, ValidSymlinkInXDGEnvVar) {
     FrameworkEnvironment env{FrameworkSettings{}.set_enable_default_search_paths(false)};
     env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2_EXPORT_ICD_GPDPA).set_discovery_type(ManifestDiscoveryType::override_folder))
         .add_physical_device({});
-    auto driver_path = env.get_icd_manifest_path(0);
-    std::string symlink_name = "symlink_to_driver.json";
-    fs::path symlink_path = env.get_folder(ManifestLocation::driver_env_var).location() / symlink_name;
-    env.get_folder(ManifestLocation::driver_env_var).add_existing_file(symlink_name);
-    int res = symlink(driver_path.c_str(), symlink_path.c_str());
-    ASSERT_EQ(res, 0);
-    EnvVarWrapper xdg_config_dirs_env_var{"XDG_CONFIG_DIRS", symlink_path.str()};
+
+    auto symlink_path =
+        env.get_folder(ManifestLocation::driver_env_var).add_symlink(env.get_icd_manifest_path(0), "symlink_to_driver.json");
+
+    EnvVarWrapper xdg_config_dirs_env_var{"XDG_CONFIG_DIRS", symlink_path};
 
     InstWrapper inst{env.vulkan_functions};
     FillDebugUtilsCreateDetails(inst.create_info, env.debug_log);
@@ -3915,12 +3963,8 @@ TEST(ManifestDiscovery, ValidSymlink) {
     env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2_EXPORT_ICD_GPDPA).set_discovery_type(ManifestDiscoveryType::override_folder))
         .add_physical_device({});
 
-    auto driver_path = env.get_icd_manifest_path(0);
-    std::string symlink_name = "symlink_to_driver.json";
-    fs::path symlink_path = env.get_folder(ManifestLocation::driver_env_var).location() / symlink_name;
-    env.get_folder(ManifestLocation::driver_env_var).add_existing_file(symlink_name);
-    int res = symlink(driver_path.c_str(), symlink_path.c_str());
-    ASSERT_EQ(res, 0);
+    auto symlink_path =
+        env.get_folder(ManifestLocation::driver_env_var).add_symlink(env.get_icd_manifest_path(0), "symlink_to_driver.json");
 
     env.platform_shim->set_fake_path(ManifestCategory::icd, env.get_folder(ManifestLocation::driver_env_var).location());
 
@@ -3932,14 +3976,12 @@ TEST(ManifestDiscovery, ValidSymlink) {
 // Check that invalid symlinks do not cause the loader to crash when directly in an XDG env-var
 TEST(ManifestDiscovery, InvalidSymlinkXDGEnvVar) {
     FrameworkEnvironment env{FrameworkSettings{}.set_enable_default_search_paths(false)};
-    std::string symlink_name = "symlink_to_nothing.json";
-    fs::path symlink_path = env.get_folder(ManifestLocation::driver_env_var).location() / symlink_name;
-    fs::path invalid_driver_path = env.get_folder(ManifestLocation::driver).location() / "nothing_here.json";
-    int res = symlink(invalid_driver_path.c_str(), symlink_path.c_str());
-    ASSERT_EQ(res, 0);
-    env.get_folder(ManifestLocation::driver_env_var).add_existing_file(symlink_name);
 
-    EnvVarWrapper xdg_config_dirs_env_var{symlink_path.str()};
+    auto symlink_path =
+        env.get_folder(ManifestLocation::driver)
+            .add_symlink(env.get_folder(ManifestLocation::driver).location() / "nothing_here.json", "symlink_to_nothing.json");
+
+    EnvVarWrapper xdg_config_dirs_env_var{symlink_path};
 
     InstWrapper inst{env.vulkan_functions};
     FillDebugUtilsCreateDetails(inst.create_info, env.debug_log);
@@ -3949,12 +3991,10 @@ TEST(ManifestDiscovery, InvalidSymlinkXDGEnvVar) {
 // Check that invalid symlinks do not cause the loader to crash
 TEST(ManifestDiscovery, InvalidSymlink) {
     FrameworkEnvironment env{FrameworkSettings{}.set_enable_default_search_paths(false)};
-    std::string symlink_name = "symlink_to_nothing.json";
-    fs::path symlink_path = env.get_folder(ManifestLocation::driver).location() / symlink_name;
-    fs::path invalid_driver_path = env.get_folder(ManifestLocation::driver_env_var).location() / "nothing_here.json";
-    int res = symlink(invalid_driver_path.c_str(), symlink_path.c_str());
-    ASSERT_EQ(res, 0);
-    env.get_folder(ManifestLocation::driver).add_existing_file(symlink_name);
+
+    auto symlink_path =
+        env.get_folder(ManifestLocation::driver_env_var)
+            .add_symlink(env.get_folder(ManifestLocation::driver).location() / "nothing_here.json", "symlink_to_nothing.json");
 
     env.platform_shim->set_fake_path(ManifestCategory::icd, env.get_folder(ManifestLocation::driver_env_var).location());
 
@@ -4179,7 +4219,7 @@ TEST(InvalidManifest, ICD) {
 
     for (size_t i = 0; i < invalid_jsons.size(); i++) {
         auto file_name = std::string("invalid_driver_") + std::to_string(i) + ".json";
-        fs::path new_path = env.get_folder(ManifestLocation::driver).write_manifest(file_name, invalid_jsons[i]);
+        std::filesystem::path new_path = env.get_folder(ManifestLocation::driver).write_manifest(file_name, invalid_jsons[i]);
         env.platform_shim->add_manifest(ManifestCategory::icd, new_path);
     }
 
@@ -4203,7 +4243,8 @@ TEST(InvalidManifest, Layer) {
 
     for (size_t i = 0; i < invalid_jsons.size(); i++) {
         auto file_name = std::string("invalid_implicit_layer_") + std::to_string(i) + ".json";
-        fs::path new_path = env.get_folder(ManifestLocation::implicit_layer).write_manifest(file_name, invalid_jsons[i]);
+        std::filesystem::path new_path =
+            env.get_folder(ManifestLocation::implicit_layer).write_manifest(file_name, invalid_jsons[i]);
         env.platform_shim->add_manifest(ManifestCategory::implicit_layer, new_path);
     }
 
@@ -4211,27 +4252,40 @@ TEST(InvalidManifest, Layer) {
     inst.CheckCreate();
 }
 #if defined(WIN32)
-void add_dxgi_adapter(FrameworkEnvironment& env, const char* name, LUID luid, uint32_t vendor_id) {
+void add_dxgi_adapter(FrameworkEnvironment& env, std::filesystem::path const& name, LUID luid, uint32_t vendor_id) {
     auto& driver = env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_6).set_discovery_type(ManifestDiscoveryType::null_dir));
     driver.set_min_icd_interface_version(5);
     driver.set_max_icd_interface_version(6);
     driver.setup_WSI();
     driver.set_icd_api_version(VK_API_VERSION_1_1);
-    driver.physical_devices.emplace_back(name);
+    driver.physical_devices.emplace_back(name.string());
     auto& pd0 = driver.physical_devices.back();
     pd0.properties.apiVersion = VK_API_VERSION_1_1;
+    driver.set_adapterLUID(luid);
 
-    DXGI_ADAPTER_DESC1 desc{};
-    desc.VendorId = known_driver_list.at(vendor_id).vendor_id;
-    desc.AdapterLuid = luid;
-    auto wide_name = conver_str_to_wstr(name);
-    wcsncpy_s(desc.Description, 128, wide_name.c_str(), wide_name.size());
-    driver.set_adapterLUID(desc.AdapterLuid);
-    env.platform_shim->add_dxgi_adapter(GpuType::discrete, desc);
+    // luid is unique per DXGI/D3DKMT adapters.Don't add extra DXGI device if one is already created.
+    // Just add path icd path to matching d3dkmt_adapter.
+    D3DKMT_Adapter* pAdapter = NULL;
+    for (uint32_t i = 0; i < env.platform_shim->d3dkmt_adapters.size(); i++) {
+        if (env.platform_shim->d3dkmt_adapters[i].adapter_luid.HighPart == luid.HighPart &&
+            env.platform_shim->d3dkmt_adapters[i].adapter_luid.LowPart == luid.LowPart) {
+            pAdapter = &env.platform_shim->d3dkmt_adapters[i];
+            break;
+        }
+    }
+    if (pAdapter == NULL) {
+        DXGI_ADAPTER_DESC1 desc{};
+        desc.VendorId = known_driver_list.at(vendor_id).vendor_id;
+        desc.AdapterLuid = luid;
+        wcsncpy_s(desc.Description, 128, name.c_str(), name.native().size());
+        env.platform_shim->add_dxgi_adapter(GpuType::discrete, desc);
 
-    env.platform_shim->add_d3dkmt_adapter(
-        D3DKMT_Adapter{static_cast<UINT>(env.icds.size()) - 1U, desc.AdapterLuid}.add_driver_manifest_path(
-            env.get_icd_manifest_path(env.icds.size() - 1)));
+        env.platform_shim->add_d3dkmt_adapter(
+            D3DKMT_Adapter{static_cast<UINT>(env.icds.size()) - 1U, desc.AdapterLuid}.add_driver_manifest_path(
+                env.get_icd_manifest_path(env.icds.size() - 1)));
+    } else {
+        pAdapter->add_driver_manifest_path(env.get_icd_manifest_path(env.icds.size() - 1));
+    }
 }
 
 TEST(EnumerateAdapterPhysicalDevices, SameAdapterLUID_reordered) {
@@ -4239,7 +4293,9 @@ TEST(EnumerateAdapterPhysicalDevices, SameAdapterLUID_reordered) {
 
     uint32_t physical_count = 3;
 
-    // Physical devices are enumerate in reverse order to the drivers insertion into the test framework
+    // Physical devices are enumerated:
+    // a) first in the order of LUIDs showing up in DXGIAdapter list
+    // b) then in the reverse order to the drivers insertion into the test framework
     add_dxgi_adapter(env, "physical_device_2", LUID{10, 100}, 2);
     add_dxgi_adapter(env, "physical_device_1", LUID{20, 200}, 1);
     add_dxgi_adapter(env, "physical_device_0", LUID{10, 100}, 2);
@@ -4335,7 +4391,9 @@ TEST(EnumerateAdapterPhysicalDevices, SameAdapterLUID_same_order) {
 
     uint32_t physical_count = 3;
 
-    // Physical devices are enumerate in reverse order to the drivers insertion into the test framework
+    // Physical devices are enumerated:
+    // a) first in the order of LUIDs showing up in DXGIAdapter list
+    // b) then in the reverse order to the drivers insertion into the test framework
     add_dxgi_adapter(env, "physical_device_2", LUID{10, 100}, 2);
     add_dxgi_adapter(env, "physical_device_1", LUID{20, 200}, 1);
     add_dxgi_adapter(env, "physical_device_0", LUID{10, 100}, 2);
@@ -4383,4 +4441,426 @@ TEST(EnumerateAdapterPhysicalDevices, SameAdapterLUID_same_order) {
     env.vulkan_functions.vkGetPhysicalDeviceProperties2(physical_device_handles[2], &props2);
     EXPECT_EQ(layered_driver_properties_msft.underlyingAPI, VK_LAYERED_DRIVER_UNDERLYING_API_NONE_MSFT);
 }
+
+TEST(EnumerateAdapterPhysicalDevices, WrongErrorCodes) {
+    FrameworkEnvironment env;
+
+    add_dxgi_adapter(env, "physical_device_0", LUID{10, 100}, 2);
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.setup_WSI().set_api_version(VK_API_VERSION_1_1);
+    inst.CheckCreate();
+    // TestICD only fails in EnumAdapters, so shouldn't fail to query VkPhysicalDevices
+    {
+        env.get_test_icd().set_enum_adapter_physical_devices_return_code(VK_ERROR_INITIALIZATION_FAILED);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 1);
+    }
+    {
+        env.get_test_icd().set_enum_adapter_physical_devices_return_code(VK_ERROR_INCOMPATIBLE_DRIVER);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 1);
+    }
+    {
+        env.get_test_icd().set_enum_adapter_physical_devices_return_code(VK_ERROR_SURFACE_LOST_KHR);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 1);
+    }
+
+    // TestICD fails in EnumPhysDevs, should return VK_ERROR_INCOMPATIBLE_DRIVER
+    auto check_icds = [&env, &inst] {
+        env.get_test_icd().set_enum_adapter_physical_devices_return_code(VK_ERROR_INITIALIZATION_FAILED);
+        uint32_t returned_physical_count = 0;
+        EXPECT_EQ(VK_ERROR_INITIALIZATION_FAILED,
+                  env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 0);
+
+        env.get_test_icd().set_enum_adapter_physical_devices_return_code(VK_ERROR_INCOMPATIBLE_DRIVER);
+        returned_physical_count = 0;
+        EXPECT_EQ(VK_ERROR_INITIALIZATION_FAILED,
+                  env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 0);
+
+        env.get_test_icd().set_enum_adapter_physical_devices_return_code(VK_ERROR_SURFACE_LOST_KHR);
+        returned_physical_count = 0;
+        EXPECT_EQ(VK_ERROR_INITIALIZATION_FAILED,
+                  env.vulkan_functions.vkEnumeratePhysicalDevices(inst.inst, &returned_physical_count, nullptr));
+        EXPECT_EQ(returned_physical_count, 0);
+    };
+
+    // TestICD fails in EnumPhysDevs, should return VK_ERROR_INCOMPATIBLE_DRIVER
+    env.get_test_icd().set_enum_physical_devices_return_code(VK_ERROR_INITIALIZATION_FAILED);
+    check_icds();
+
+    // TestICD fails in EnumPhysDevs, should return VK_ERROR_INCOMPATIBLE_DRIVER
+    env.get_test_icd().set_enum_physical_devices_return_code(VK_ERROR_INCOMPATIBLE_DRIVER);
+    check_icds();
+
+    // TestICD fails in EnumPhysDevs, should return VK_ERROR_INCOMPATIBLE_DRIVER
+    env.get_test_icd().set_enum_physical_devices_return_code(VK_ERROR_SURFACE_LOST_KHR);
+    check_icds();
+}
+
+TEST(EnumerateAdapterPhysicalDevices, ManyAdapters) {
+    FrameworkEnvironment env;
+
+    uint32_t icd_count = 10;
+    for (uint32_t i = 0; i < icd_count; i++) {
+        // Add 2 separate physical devices with the same luid
+        LUID luid{10U + i, static_cast<LONG>(100U + i)};
+        add_dxgi_adapter(env, std::string("physical_device_") + std::to_string(i), luid, 2);
+        add_dxgi_adapter(env, std::string("physical_device_") + std::to_string(i + icd_count), luid, 2);
+    }
+    uint32_t device_count = icd_count * 2;
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.setup_WSI().set_api_version(VK_API_VERSION_1_1);
+    inst.CheckCreate();
+
+    auto physical_devices = inst.GetPhysDevs(device_count);
+    for (auto physical_device : physical_devices) {
+        DeviceWrapper dev{inst};
+        dev.CheckCreate(physical_device);
+    }
+}
 #endif  // defined(WIN32)
+
+void try_create_swapchain(InstWrapper& inst, VkPhysicalDevice physical_device, DeviceWrapper& dev, VkSurfaceKHR const& surface) {
+    PFN_vkGetPhysicalDeviceSurfaceSupportKHR GetPhysicalDeviceSurfaceSupportKHR = inst.load("vkGetPhysicalDeviceSurfaceSupportKHR");
+    PFN_vkCreateSwapchainKHR CreateSwapchainKHR = dev.load("vkCreateSwapchainKHR");
+    PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR = dev.load("vkGetSwapchainImagesKHR");
+    PFN_vkDestroySwapchainKHR DestroySwapchainKHR = dev.load("vkDestroySwapchainKHR");
+    ASSERT_TRUE(nullptr != GetPhysicalDeviceSurfaceSupportKHR);
+    ASSERT_TRUE(nullptr != CreateSwapchainKHR);
+    ASSERT_TRUE(nullptr != GetSwapchainImagesKHR);
+    ASSERT_TRUE(nullptr != DestroySwapchainKHR);
+
+    VkBool32 supported = false;
+    ASSERT_EQ(VK_SUCCESS, GetPhysicalDeviceSurfaceSupportKHR(physical_device, 0, surface, &supported));
+    ASSERT_EQ(supported, VK_TRUE);
+
+    VkSwapchainKHR swapchain{};
+    VkSwapchainCreateInfoKHR swap_create_info{};
+    swap_create_info.surface = surface;
+
+    ASSERT_EQ(VK_SUCCESS, CreateSwapchainKHR(dev, &swap_create_info, nullptr, &swapchain));
+    uint32_t count = 0;
+    ASSERT_EQ(VK_SUCCESS, GetSwapchainImagesKHR(dev, swapchain, &count, nullptr));
+    ASSERT_GT(count, 0U);
+    std::array<VkImage, 16> images;
+    ASSERT_EQ(VK_SUCCESS, GetSwapchainImagesKHR(dev, swapchain, &count, images.data()));
+    DestroySwapchainKHR(dev, swapchain, nullptr);
+}
+
+void add_driver_for_unloading_testing(FrameworkEnvironment& env) {
+    env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2))
+        .add_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)
+        .setup_WSI()
+        .add_physical_device(PhysicalDevice{}
+                                 .add_extension("VK_KHR_swapchain")
+                                 .add_queue_family_properties({{VK_QUEUE_GRAPHICS_BIT, 1, 0, {1, 1, 1}}, true})
+                                 .finish());
+}
+
+void add_empty_driver_for_unloading_testing(FrameworkEnvironment& env) {
+    env.add_icd(TestICDDetails(TEST_ICD_PATH_VERSION_2)).add_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME).setup_WSI();
+}
+
+TEST(DriverUnloadingFromZeroPhysDevs, InterspersedThroughout) {
+    FrameworkEnvironment env{};
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+
+    DebugUtilsLogger debug_log{VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT};
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.setup_WSI().add_extension("VK_EXT_debug_report");
+    FillDebugUtilsCreateDetails(inst.create_info, debug_log);
+    inst.CheckCreate();
+    DebugUtilsWrapper log{inst};
+    ASSERT_EQ(VK_SUCCESS, CreateDebugUtilsMessenger(log));
+
+    PFN_vkSubmitDebugUtilsMessageEXT submit_message = inst.load("vkSubmitDebugUtilsMessageEXT");
+    ASSERT_TRUE(submit_message != nullptr);
+
+    VkSurfaceKHR pre_surface{};
+    ASSERT_EQ(VK_SUCCESS, create_surface(inst, pre_surface));
+    WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR> pre_enum_phys_devs_surface{
+        pre_surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR};
+
+    VkDebugReportCallbackEXT debug_callback{};
+    VkDebugReportCallbackCreateInfoEXT debug_report_create_info{};
+    ASSERT_EQ(VK_SUCCESS, create_debug_callback(inst, debug_report_create_info, debug_callback));
+    WrappedHandle<VkDebugReportCallbackEXT, VkInstance, PFN_vkDestroyDebugReportCallbackEXT>
+        pre_enum_phys_devs_debug_report_callback{debug_callback, inst.inst, env.vulkan_functions.vkDestroyDebugReportCallbackEXT};
+
+    auto phys_devs = inst.GetPhysDevs();
+    std::vector<WrappedHandle<VkDebugUtilsMessengerEXT, VkInstance, PFN_vkDestroyDebugUtilsMessengerEXT>> messengers;
+    std::vector<WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR>> surfaces;
+    for (uint32_t i = 0; i < 35; i++) {
+        VkDebugUtilsMessengerEXT messenger;
+        ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkCreateDebugUtilsMessengerEXT(inst.inst, log.get(), nullptr, &messenger));
+        messengers.emplace_back(messenger, inst.inst, env.vulkan_functions.vkDestroyDebugUtilsMessengerEXT);
+
+        VkSurfaceKHR surface{};
+        ASSERT_EQ(VK_SUCCESS, create_surface(inst, surface));
+        surfaces.emplace_back(surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR);
+    }
+    for (const auto& phys_dev : phys_devs) {
+        DeviceWrapper dev{inst};
+        dev.create_info.add_extension("VK_KHR_swapchain");
+        dev.CheckCreate(phys_dev);
+        for (const auto& surface : surfaces) {
+            try_create_swapchain(inst, phys_dev, dev, surface.handle);
+        }
+    }
+}
+
+TEST(DriverUnloadingFromZeroPhysDevs, InMiddleOfList) {
+    FrameworkEnvironment env{};
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.add_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    inst.create_info.setup_WSI().add_extension("VK_EXT_debug_report");
+    inst.CheckCreate();
+    DebugUtilsWrapper log{inst};
+    ASSERT_EQ(VK_SUCCESS, CreateDebugUtilsMessenger(log));
+
+    VkSurfaceKHR pre_surface{};
+    ASSERT_EQ(VK_SUCCESS, create_surface(inst, pre_surface));
+    WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR> pre_enum_phys_devs_surface{
+        pre_surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR};
+
+    VkDebugReportCallbackEXT debug_callback{};
+    VkDebugReportCallbackCreateInfoEXT debug_report_create_info{};
+    ASSERT_EQ(VK_SUCCESS, create_debug_callback(inst, debug_report_create_info, debug_callback));
+    WrappedHandle<VkDebugReportCallbackEXT, VkInstance, PFN_vkDestroyDebugReportCallbackEXT>
+        pre_enum_phys_devs_debug_report_callback{debug_callback, inst.inst, env.vulkan_functions.vkDestroyDebugReportCallbackEXT};
+
+    auto phys_devs = inst.GetPhysDevs();
+    std::vector<WrappedHandle<VkDebugUtilsMessengerEXT, VkInstance, PFN_vkDestroyDebugUtilsMessengerEXT>> messengers;
+    std::vector<WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR>> surfaces;
+    for (uint32_t i = 0; i < 35; i++) {
+        VkDebugUtilsMessengerEXT messenger;
+        ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkCreateDebugUtilsMessengerEXT(inst.inst, log.get(), nullptr, &messenger));
+        messengers.emplace_back(messenger, inst.inst, env.vulkan_functions.vkDestroyDebugUtilsMessengerEXT);
+
+        VkSurfaceKHR surface{};
+        ASSERT_EQ(VK_SUCCESS, create_surface(inst, surface));
+        surfaces.emplace_back(surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR);
+    }
+    for (const auto& phys_dev : phys_devs) {
+        DeviceWrapper dev{inst};
+        dev.create_info.add_extension("VK_KHR_swapchain");
+        dev.CheckCreate(phys_dev);
+        for (const auto& surface : surfaces) {
+            try_create_swapchain(inst, phys_dev, dev, surface.handle);
+        }
+    }
+}
+
+TEST(DriverUnloadingFromZeroPhysDevs, AtFrontAndBack) {
+    FrameworkEnvironment env{};
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+
+    DebugUtilsLogger debug_log{VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT};
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.setup_WSI().add_extension("VK_EXT_debug_report");
+    FillDebugUtilsCreateDetails(inst.create_info, debug_log);
+    inst.CheckCreate();
+
+    DebugUtilsWrapper log{inst};
+    ASSERT_EQ(VK_SUCCESS, CreateDebugUtilsMessenger(log));
+
+    VkSurfaceKHR pre_surface{};
+    ASSERT_EQ(VK_SUCCESS, create_surface(inst, pre_surface));
+    WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR> pre_enum_phys_devs_surface{
+        pre_surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR};
+
+    VkDebugReportCallbackEXT debug_callback{};
+    VkDebugReportCallbackCreateInfoEXT debug_report_create_info{};
+    ASSERT_EQ(VK_SUCCESS, create_debug_callback(inst, debug_report_create_info, debug_callback));
+    WrappedHandle<VkDebugReportCallbackEXT, VkInstance, PFN_vkDestroyDebugReportCallbackEXT>
+        pre_enum_phys_devs_debug_report_callback{debug_callback, inst.inst, env.vulkan_functions.vkDestroyDebugReportCallbackEXT};
+
+    auto phys_devs = inst.GetPhysDevs();
+    std::vector<WrappedHandle<VkDebugUtilsMessengerEXT, VkInstance, PFN_vkDestroyDebugUtilsMessengerEXT>> messengers;
+    std::vector<WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR>> surfaces;
+    for (uint32_t i = 0; i < 35; i++) {
+        VkDebugUtilsMessengerEXT messenger;
+        ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkCreateDebugUtilsMessengerEXT(inst.inst, log.get(), nullptr, &messenger));
+        messengers.emplace_back(messenger, inst.inst, env.vulkan_functions.vkDestroyDebugUtilsMessengerEXT);
+
+        VkSurfaceKHR surface{};
+        ASSERT_EQ(VK_SUCCESS, create_surface(inst, surface));
+        surfaces.emplace_back(surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR);
+    }
+    for (const auto& phys_dev : phys_devs) {
+        DeviceWrapper dev{inst};
+        dev.create_info.add_extension("VK_KHR_swapchain");
+        dev.CheckCreate(phys_dev);
+
+        for (const auto& surface : surfaces) {
+            try_create_swapchain(inst, phys_dev, dev, surface.handle);
+        }
+    }
+}
+
+TEST(DriverUnloadingFromZeroPhysDevs, MultipleEnumerateCalls) {
+    FrameworkEnvironment env{};
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+
+    uint32_t extension_count = 0;
+    ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, 0));
+    ASSERT_EQ(extension_count, 6U);  // default extensions + surface extensions
+    std::array<VkExtensionProperties, 6> extensions;
+    ASSERT_EQ(VK_SUCCESS,
+              env.vulkan_functions.vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data()));
+
+    {
+        InstWrapper inst{env.vulkan_functions};
+        inst.CheckCreate();
+        auto phys_devs1 = inst.GetPhysDevs();
+        auto phys_devs2 = inst.GetPhysDevs();
+    }
+    {
+        InstWrapper inst{env.vulkan_functions};
+        inst.CheckCreate();
+        auto phys_devs1 = inst.GetPhysDevs();
+        auto phys_devs2 = inst.GetPhysDevs();
+    }
+}
+TEST(DriverUnloadingFromZeroPhysDevs, NoPhysicalDevices) {
+    FrameworkEnvironment env{};
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+
+    DebugUtilsLogger debug_log{VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT};
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.setup_WSI().add_extension("VK_EXT_debug_report");
+    FillDebugUtilsCreateDetails(inst.create_info, debug_log);
+    inst.CheckCreate();
+    DebugUtilsWrapper log{inst};
+    ASSERT_EQ(VK_SUCCESS, CreateDebugUtilsMessenger(log));
+
+    VkSurfaceKHR pre_surface{};
+    ASSERT_EQ(VK_SUCCESS, create_surface(inst, pre_surface));
+    WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR> pre_enum_phys_devs_surface{
+        pre_surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR};
+
+    VkDebugReportCallbackEXT debug_callback{};
+    VkDebugReportCallbackCreateInfoEXT debug_report_create_info{};
+    ASSERT_EQ(VK_SUCCESS, create_debug_callback(inst, debug_report_create_info, debug_callback));
+    WrappedHandle<VkDebugReportCallbackEXT, VkInstance, PFN_vkDestroyDebugReportCallbackEXT>
+        pre_enum_phys_devs_debug_report_callback{debug_callback, inst.inst, env.vulkan_functions.vkDestroyDebugReportCallbackEXT};
+
+    // No physical devices == VK_ERROR_INITIALIZATION_FAILED
+    inst.GetPhysDevs(VK_ERROR_INITIALIZATION_FAILED);
+
+    std::vector<WrappedHandle<VkDebugUtilsMessengerEXT, VkInstance, PFN_vkDestroyDebugUtilsMessengerEXT>> messengers;
+    std::vector<WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR>> surfaces;
+    for (uint32_t i = 0; i < 35; i++) {
+        VkDebugUtilsMessengerEXT messenger;
+        ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkCreateDebugUtilsMessengerEXT(inst.inst, log.get(), nullptr, &messenger));
+        messengers.emplace_back(messenger, inst.inst, env.vulkan_functions.vkDestroyDebugUtilsMessengerEXT);
+
+        VkSurfaceKHR surface{};
+        ASSERT_EQ(VK_SUCCESS, create_surface(inst, surface));
+        surfaces.emplace_back(surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR);
+    }
+}
+
+TEST(DriverUnloadingFromZeroPhysDevs, HandleRecreation) {
+    FrameworkEnvironment env{};
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+    add_driver_for_unloading_testing(env);
+    add_empty_driver_for_unloading_testing(env);
+
+    DebugUtilsLogger debug_log{VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT};
+    InstWrapper inst{env.vulkan_functions};
+    inst.create_info.setup_WSI().add_extension("VK_EXT_debug_report");
+    FillDebugUtilsCreateDetails(inst.create_info, debug_log);
+    inst.CheckCreate();
+    DebugUtilsWrapper log{inst};
+    ASSERT_EQ(VK_SUCCESS, CreateDebugUtilsMessenger(log));
+
+    PFN_vkSubmitDebugUtilsMessageEXT submit_message = inst.load("vkSubmitDebugUtilsMessageEXT");
+    ASSERT_TRUE(submit_message != nullptr);
+
+    VkSurfaceKHR pre_surface{};
+    ASSERT_EQ(VK_SUCCESS, create_surface(inst, pre_surface));
+    WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR> pre_enum_phys_devs_surface{
+        pre_surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR};
+
+    VkDebugReportCallbackEXT debug_callback{};
+    VkDebugReportCallbackCreateInfoEXT debug_report_create_info{};
+    ASSERT_EQ(VK_SUCCESS, create_debug_callback(inst, debug_report_create_info, debug_callback));
+    WrappedHandle<VkDebugReportCallbackEXT, VkInstance, PFN_vkDestroyDebugReportCallbackEXT>
+        pre_enum_phys_devs_debug_report_callback{debug_callback, inst.inst, env.vulkan_functions.vkDestroyDebugReportCallbackEXT};
+
+    auto phys_devs = inst.GetPhysDevs();
+    std::vector<WrappedHandle<VkDebugUtilsMessengerEXT, VkInstance, PFN_vkDestroyDebugUtilsMessengerEXT>> messengers;
+    std::vector<WrappedHandle<VkSurfaceKHR, VkInstance, PFN_vkDestroySurfaceKHR>> surfaces;
+    for (uint32_t i = 0; i < 35; i++) {
+        VkDebugUtilsMessengerEXT messenger;
+        ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkCreateDebugUtilsMessengerEXT(inst.inst, log.get(), nullptr, &messenger));
+        messengers.emplace_back(messenger, inst.inst, env.vulkan_functions.vkDestroyDebugUtilsMessengerEXT);
+
+        VkSurfaceKHR surface{};
+        ASSERT_EQ(VK_SUCCESS, create_surface(inst, surface));
+        surfaces.emplace_back(surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR);
+    }
+    // Remove some elements arbitrarily - remove 15 of each
+    // Do it backwards so the indexes are 'corect'
+    for (uint32_t i = 31; i > 2; i -= 2) {
+        messengers.erase(messengers.begin() + i);
+        surfaces.erase(surfaces.begin() + i);
+    }
+    // Add in another 100
+    for (uint32_t i = 0; i < 100; i++) {
+        VkDebugUtilsMessengerEXT messenger;
+        ASSERT_EQ(VK_SUCCESS, env.vulkan_functions.vkCreateDebugUtilsMessengerEXT(inst.inst, log.get(), nullptr, &messenger));
+        messengers.emplace_back(messenger, inst.inst, env.vulkan_functions.vkDestroyDebugUtilsMessengerEXT);
+
+        VkSurfaceKHR surface{};
+        ASSERT_EQ(VK_SUCCESS, create_surface(inst, surface));
+        surfaces.emplace_back(surface, inst.inst, env.vulkan_functions.vkDestroySurfaceKHR);
+    }
+    for (const auto& phys_dev : phys_devs) {
+        DeviceWrapper dev{inst};
+        dev.create_info.add_extension("VK_KHR_swapchain");
+        dev.CheckCreate(phys_dev);
+        for (const auto& surface : surfaces) {
+            try_create_swapchain(inst, phys_dev, dev, surface.handle);
+        }
+    }
+    VkDebugUtilsMessengerCallbackDataEXT data{};
+    data.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT;
+    data.pMessage = "I'm a test message!";
+    data.messageIdNumber = 1;
+    submit_message(inst.inst, VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT, VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT, &data);
+
+    ASSERT_EQ(120U + 1U, log.count(data.pMessage));
+}

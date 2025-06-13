@@ -53,7 +53,7 @@ jobs:
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@407ffafae6a767df3e0230c3df91b6443ae8df75 # v2.22.8
+      uses: github/codeql-action/init@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
       with:
         languages: ${{ matrix.language }}
     #     If you wish to specify custom queries, you can do so here or in a config file.
@@ -68,16 +68,12 @@ jobs:
     # If this step fails, then you should remove it and run the build manually
     - name: Autobuild
       if: matrix.language == 'python' 
-      uses: github/codeql-action/autobuild@407ffafae6a767df3e0230c3df91b6443ae8df75 # v2.22.8
+      uses: github/codeql-action/autobuild@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
 
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       if: matrix.language == 'cpp'
       with:
-        python-version: '3.7'
-    - uses: lukka/get-cmake@latest
-      if: matrix.language == 'cpp'
-      with:
-        cmakeVersion: 3.17.2
+        python-version: '3.11'
     - name: Install Dependencies
       if: matrix.language == 'cpp'
       run: |
@@ -86,7 +82,7 @@ jobs:
 
     - name: Generate build files
       if: matrix.language == 'cpp'
-      run: cmake -S. -B build -D CMAKE_BUILD_TYPE=Release -D UPDATE_DEPS=ON -D LOADER_ENABLE_ADDRESS_SANITIZER=ON -D ENABLE_WERROR=ON
+      run: cmake -S. -B build -D CMAKE_BUILD_TYPE=Release -D UPDATE_DEPS=ON
       env:
         CC: gcc
         CXX: g++
@@ -96,6 +92,6 @@ jobs:
       run: cmake --build build
     
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@407ffafae6a767df3e0230c3df91b6443ae8df75 # v2.22.8
+      uses: github/codeql-action/analyze@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
       with:
         category: "/language:${{matrix.language}}"

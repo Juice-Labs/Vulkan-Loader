@@ -2,9 +2,11 @@
 // See loader_extension_generator.py for modifications
 
 /*
- * Copyright (c) 2015-2022 The Khronos Group Inc.
- * Copyright (c) 2015-2022 Valve Corporation
- * Copyright (c) 2015-2022 LunarG, Inc.
+ * Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
+ * Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023-2023 RasterGrid Kft.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +22,17 @@
  *
  * Author: Mark Lobodzinski <mark@lunarg.com>
  * Author: Mark Young <marky@lunarg.com>
+ * Author: Charles Giessen <charles@lunarg.com>
  */
 
 // clang-format off
 #pragma once
+
+#include <stdbool.h>
+#include <vulkan/vulkan.h>
+#include <vulkan/vk_layer.h>
+#include "vk_layer_dispatch_table.h"
+
 
 // Structures defined externally, but used here
 struct loader_instance;
@@ -38,10 +47,12 @@ VKAPI_ATTR VkResult VKAPI_CALL vkDevExtError(VkDevice dev);
 // the appropriate information for any instance extensions we know about.
 bool extension_instance_gpa(struct loader_instance *ptr_instance, const char *name, void **addr);
 
+struct loader_instance_extension_enable_list; // Forward declaration
+
 // Extension interception for vkCreateInstance function, so we can properly
 // detect and enable any instance extension information for extensions we know
 // about.
-void extensions_create_instance(struct loader_instance *ptr_instance, const VkInstanceCreateInfo *pCreateInfo);
+void fill_out_enabled_instance_extensions(uint32_t extension_count, const char *const * extension_list, struct loader_instance_extension_enable_list* enables);
 
 // Extension interception for vkGetDeviceProcAddr function, so we can return
 // an appropriate terminator if this is one of those few device commands requiring
@@ -129,6 +140,10 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_CreateDevice(
     const VkAllocationCallbacks*                pAllocator,
     VkDevice*                                   pDevice);
 VKAPI_ATTR VkResult VKAPI_CALL terminator_EnumerateInstanceExtensionProperties(
+    const char*                                 pLayerName,
+    uint32_t*                                   pPropertyCount,
+    VkExtensionProperties*                      pProperties);
+VKAPI_ATTR VkResult VKAPI_CALL terminator_pre_instance_EnumerateInstanceExtensionProperties(
     const VkEnumerateInstanceExtensionPropertiesChain* chain,
     const char*                                 pLayerName,
     uint32_t*                                   pPropertyCount,
@@ -139,6 +154,9 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_EnumerateDeviceExtensionProperties(
     uint32_t*                                   pPropertyCount,
     VkExtensionProperties*                      pProperties);
 VKAPI_ATTR VkResult VKAPI_CALL terminator_EnumerateInstanceLayerProperties(
+    uint32_t*                                   pPropertyCount,
+    VkLayerProperties*                          pProperties);
+VKAPI_ATTR VkResult VKAPI_CALL terminator_pre_instance_EnumerateInstanceLayerProperties(
     const VkEnumerateInstanceLayerPropertiesChain* chain,
     uint32_t*                                   pPropertyCount,
     VkLayerProperties*                          pProperties);
@@ -156,6 +174,8 @@ VKAPI_ATTR void VKAPI_CALL terminator_GetPhysicalDeviceSparseImageFormatProperti
     uint32_t*                                   pPropertyCount,
     VkSparseImageFormatProperties*              pProperties);
 VKAPI_ATTR VkResult VKAPI_CALL terminator_EnumerateInstanceVersion(
+    uint32_t*                                   pApiVersion);
+VKAPI_ATTR VkResult VKAPI_CALL terminator_pre_instance_EnumerateInstanceVersion(
     const VkEnumerateInstanceVersionChain* chain,
     uint32_t*                                   pApiVersion);
 VKAPI_ATTR VkResult VKAPI_CALL terminator_EnumeratePhysicalDeviceGroups(
@@ -208,7 +228,7 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_GetPhysicalDeviceToolProperties(
 // ICD function pointer dispatch table
 struct loader_icd_term_dispatch {
 
-    // ---- Core 1_0 commands
+    // ---- Core Vulkan 1.0 commands
     PFN_vkCreateInstance CreateInstance;
     PFN_vkDestroyInstance DestroyInstance;
     PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
@@ -225,7 +245,7 @@ struct loader_icd_term_dispatch {
     PFN_vkEnumerateInstanceLayerProperties EnumerateInstanceLayerProperties;
     PFN_vkGetPhysicalDeviceSparseImageFormatProperties GetPhysicalDeviceSparseImageFormatProperties;
 
-    // ---- Core 1_1 commands
+    // ---- Core Vulkan 1.1 commands
     PFN_vkEnumerateInstanceVersion EnumerateInstanceVersion;
     PFN_vkEnumeratePhysicalDeviceGroups EnumeratePhysicalDeviceGroups;
     PFN_vkGetPhysicalDeviceFeatures2 GetPhysicalDeviceFeatures2;
@@ -239,7 +259,7 @@ struct loader_icd_term_dispatch {
     PFN_vkGetPhysicalDeviceExternalFenceProperties GetPhysicalDeviceExternalFenceProperties;
     PFN_vkGetPhysicalDeviceExternalSemaphoreProperties GetPhysicalDeviceExternalSemaphoreProperties;
 
-    // ---- Core 1_3 commands
+    // ---- Core Vulkan 1.3 commands
     PFN_vkGetPhysicalDeviceToolProperties GetPhysicalDeviceToolProperties;
 
     // ---- VK_KHR_surface extension commands
@@ -341,12 +361,13 @@ struct loader_icd_term_dispatch {
     PFN_vkGetPhysicalDeviceFragmentShadingRatesKHR GetPhysicalDeviceFragmentShadingRatesKHR;
 
     // ---- VK_KHR_video_encode_queue extension commands
-#if defined(VK_ENABLE_BETA_EXTENSIONS)
     PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR GetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR;
-#endif // VK_ENABLE_BETA_EXTENSIONS
 
     // ---- VK_KHR_cooperative_matrix extension commands
     PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR GetPhysicalDeviceCooperativeMatrixPropertiesKHR;
+
+    // ---- VK_KHR_calibrated_timestamps extension commands
+    PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR GetPhysicalDeviceCalibrateableTimeDomainsKHR;
 
     // ---- VK_EXT_debug_report extension commands
     PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT;
@@ -461,36 +482,102 @@ struct loader_icd_term_dispatch {
 
     // ---- VK_JUICE_juda extension commands
     PFN_vkGetRemoteGPUClientJUICE GetRemoteGPUClientJUICE;
+
+    // ---- VK_NV_cooperative_vector extension commands
+    PFN_vkGetPhysicalDeviceCooperativeVectorPropertiesNV GetPhysicalDeviceCooperativeVectorPropertiesNV;
+
+    // ---- VK_NV_cooperative_matrix2 extension commands
+    PFN_vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV GetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV;
 };
 
-struct loader_instance_extension_enables {
+struct loader_instance_extension_enable_list {
+    uint8_t khr_surface;
+    uint8_t khr_display;
+#if defined(VK_USE_PLATFORM_XLIB_KHR)
+    uint8_t khr_xlib_surface;
+#endif // defined(VK_USE_PLATFORM_XLIB_KHR)
+#if defined(VK_USE_PLATFORM_XCB_KHR)
+    uint8_t khr_xcb_surface;
+#endif // defined(VK_USE_PLATFORM_XCB_KHR)
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
+    uint8_t khr_wayland_surface;
+#endif // defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+    uint8_t khr_android_surface;
+#endif // defined(VK_USE_PLATFORM_ANDROID_KHR)
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    uint8_t khr_win32_surface;
+#endif // defined(VK_USE_PLATFORM_WIN32_KHR)
     uint8_t khr_get_physical_device_properties2;
     uint8_t khr_device_group_creation;
     uint8_t khr_external_memory_capabilities;
     uint8_t khr_external_semaphore_capabilities;
     uint8_t khr_external_fence_capabilities;
+    uint8_t khr_get_surface_capabilities2;
+    uint8_t khr_get_display_properties2;
+    uint8_t khr_surface_protected_capabilities;
+    uint8_t khr_portability_enumeration;
     uint8_t ext_debug_report;
+#if defined(VK_USE_PLATFORM_GGP)
+    uint8_t ggp_stream_descriptor_surface;
+#endif // defined(VK_USE_PLATFORM_GGP)
     uint8_t nv_external_memory_capabilities;
+    uint8_t ext_validation_flags;
+#if defined(VK_USE_PLATFORM_VI_NN)
+    uint8_t nn_vi_surface;
+#endif // defined(VK_USE_PLATFORM_VI_NN)
     uint8_t ext_direct_mode_display;
+#if defined(VK_USE_PLATFORM_XLIB_XRANDR_EXT)
     uint8_t ext_acquire_xlib_display;
+#endif // defined(VK_USE_PLATFORM_XLIB_XRANDR_EXT)
     uint8_t ext_display_surface_counter;
+    uint8_t ext_swapchain_colorspace;
+#if defined(VK_USE_PLATFORM_IOS_MVK)
+    uint8_t mvk_ios_surface;
+#endif // defined(VK_USE_PLATFORM_IOS_MVK)
+#if defined(VK_USE_PLATFORM_MACOS_MVK)
+    uint8_t mvk_macos_surface;
+#endif // defined(VK_USE_PLATFORM_MACOS_MVK)
     uint8_t ext_debug_utils;
+#if defined(VK_USE_PLATFORM_FUCHSIA)
+    uint8_t fuchsia_imagepipe_surface;
+#endif // defined(VK_USE_PLATFORM_FUCHSIA)
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    uint8_t ext_metal_surface;
+#endif // defined(VK_USE_PLATFORM_METAL_EXT)
+    uint8_t ext_validation_features;
+    uint8_t ext_headless_surface;
+    uint8_t ext_surface_maintenance1;
     uint8_t ext_acquire_drm_display;
     uint8_t juice_juda : 1;
     uint8_t juice_portability : 1;
+#if defined(VK_USE_PLATFORM_DIRECTFB_EXT)
+    uint8_t ext_directfb_surface;
+#endif // defined(VK_USE_PLATFORM_DIRECTFB_EXT)
+#if defined(VK_USE_PLATFORM_SCREEN_QNX)
+    uint8_t qnx_screen_surface;
+#endif // defined(VK_USE_PLATFORM_SCREEN_QNX)
+    uint8_t google_surfaceless_query;
+    uint8_t lunarg_direct_driver_loading;
+    uint8_t ext_layer_settings;
+    uint8_t nv_display_stereo;
 };
 
 // Functions that required a terminator need to have a separate dispatch table which contains their corresponding
 // device function. This is used in the terminators themselves.
 struct loader_device_terminator_dispatch {
+
     // ---- VK_KHR_swapchain extension commands
     PFN_vkCreateSwapchainKHR CreateSwapchainKHR;
     PFN_vkGetDeviceGroupSurfacePresentModesKHR GetDeviceGroupSurfacePresentModesKHR;
+
     // ---- VK_KHR_display_swapchain extension commands
     PFN_vkCreateSharedSwapchainsKHR CreateSharedSwapchainsKHR;
+
     // ---- VK_EXT_debug_marker extension commands
     PFN_vkDebugMarkerSetObjectTagEXT DebugMarkerSetObjectTagEXT;
     PFN_vkDebugMarkerSetObjectNameEXT DebugMarkerSetObjectNameEXT;
+
     // ---- VK_EXT_debug_utils extension commands
     PFN_vkSetDebugUtilsObjectNameEXT SetDebugUtilsObjectNameEXT;
     PFN_vkSetDebugUtilsObjectTagEXT SetDebugUtilsObjectTagEXT;
@@ -501,6 +588,7 @@ struct loader_device_terminator_dispatch {
     PFN_vkCmdEndDebugUtilsLabelEXT CmdEndDebugUtilsLabelEXT;
     PFN_vkCmdInsertDebugUtilsLabelEXT CmdInsertDebugUtilsLabelEXT;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
+
     // ---- VK_EXT_full_screen_exclusive extension commands
     PFN_vkGetDeviceGroupSurfacePresentModes2EXT GetDeviceGroupSurfacePresentModes2EXT;
 #endif // VK_USE_PLATFORM_WIN32_KHR

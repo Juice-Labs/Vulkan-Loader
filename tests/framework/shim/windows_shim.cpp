@@ -31,6 +31,9 @@
 #include <ntstatus.h>
 #endif
 
+#include <windows.h>
+#include <debugapi.h>
+
 #include "shim.h"
 
 #include "detours.h"
@@ -82,19 +85,21 @@ NTSTATUS APIENTRY ShimQueryAdapterInfo(const LoaderQueryAdapterInfo *query_info)
     auto *reg_info = reinterpret_cast<LoaderQueryRegistryInfo *>(query_info->private_data);
 
     std::vector<std::wstring> *paths = nullptr;
-    if (reg_info->value_name[6] == L'D') {  // looking for drivers
+    if (wcsstr(reg_info->value_name, L"DriverName") != nullptr) {  // looking for drivers
         paths = &adapter.driver_paths;
-    } else if (reg_info->value_name[6] == L'I') {  // looking for implicit layers
+    } else if (wcsstr(reg_info->value_name, L"ImplicitLayers") != nullptr) {  // looking for implicit layers
         paths = &adapter.implicit_layer_paths;
-    } else if (reg_info->value_name[6] == L'E') {  // looking for explicit layers
+    } else if (wcsstr(reg_info->value_name, L"ExplicitLayers") != nullptr) {  // looking for explicit layers
         paths = &adapter.explicit_layer_paths;
     }
 
     reg_info->status = LOADER_QUERY_REGISTRY_STATUS_SUCCESS;
     if (reg_info->output_value_size == 0) {
-        ULONG size = 2;  // final null terminator
-        for (auto const &path : *paths) size = static_cast<ULONG>(path.length() * sizeof(wchar_t));
-        // size in bytes, so multiply path size by two and add 2 for the null terminator
+        // final null terminator size
+        ULONG size = 2;
+
+        // size is in bytes, so multiply path size + 1 (for null terminator) by size of wchar (basically, 2).
+        for (auto const &path : *paths) size += static_cast<ULONG>((path.length() + 1) * sizeof(wchar_t));
         reg_info->output_value_size = size;
         if (size != 2) {
             // only want to write data if there is path data to write
@@ -300,17 +305,13 @@ const std::string *get_path_of_created_key(HKEY hKey) {
     return nullptr;
 }
 std::vector<RegistryEntry> *get_registry_vector(std::string const &path) {
-    if (path == "HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\Vulkan\\Drivers") return &platform_shim.hkey_local_machine_drivers;
-    if (path == "HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\Vulkan\\ExplicitLayers")
-        return &platform_shim.hkey_local_machine_explicit_layers;
-    if (path == "HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers")
-        return &platform_shim.hkey_local_machine_implicit_layers;
-    if (path == "HKEY_CURRENT_USER\\SOFTWARE\\Khronos\\Vulkan\\ExplicitLayers")
-        return &platform_shim.hkey_current_user_explicit_layers;
-    if (path == "HKEY_CURRENT_USER\\SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers")
-        return &platform_shim.hkey_current_user_implicit_layers;
-    if (path == "HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\Vulkan\\LoaderSettings") return &platform_shim.hkey_local_machine_settings;
-    if (path == "HKEY_CURRENT_USER\\SOFTWARE\\Khronos\\Vulkan\\LoaderSettings") return &platform_shim.hkey_current_user_settings;
+    if (path == "HKEY_LOCAL_MACHINE\\" VK_DRIVERS_INFO_REGISTRY_LOC) return &platform_shim.hkey_local_machine_drivers;
+    if (path == "HKEY_LOCAL_MACHINE\\" VK_ELAYERS_INFO_REGISTRY_LOC) return &platform_shim.hkey_local_machine_explicit_layers;
+    if (path == "HKEY_LOCAL_MACHINE\\" VK_ILAYERS_INFO_REGISTRY_LOC) return &platform_shim.hkey_local_machine_implicit_layers;
+    if (path == "HKEY_CURRENT_USER\\" VK_ELAYERS_INFO_REGISTRY_LOC) return &platform_shim.hkey_current_user_explicit_layers;
+    if (path == "HKEY_CURRENT_USER\\" VK_ILAYERS_INFO_REGISTRY_LOC) return &platform_shim.hkey_current_user_implicit_layers;
+    if (path == "HKEY_LOCAL_MACHINE\\" VK_SETTINGS_INFO_REGISTRY_LOC) return &platform_shim.hkey_local_machine_settings;
+    if (path == "HKEY_CURRENT_USER\\" VK_SETTINGS_INFO_REGISTRY_LOC) return &platform_shim.hkey_current_user_settings;
     return nullptr;
 }
 LSTATUS __stdcall ShimRegQueryValueExA(HKEY, LPCSTR, LPDWORD, LPDWORD, LPBYTE, LPDWORD) {
@@ -328,12 +329,13 @@ LSTATUS __stdcall ShimRegEnumValueA(HKEY hKey, DWORD dwIndex, LPSTR lpValueName,
     const auto &location = *location_ptr;
     if (dwIndex >= location.size()) return ERROR_NO_MORE_ITEMS;
 
-    if (*lpcchValueName < location[dwIndex].name.size()) return ERROR_NO_MORE_ITEMS;
-    for (size_t i = 0; i < location[dwIndex].name.size(); i++) {
-        lpValueName[i] = location[dwIndex].name[i];
+    std::string name = narrow(location[dwIndex].name);
+    if (*lpcchValueName < name.size()) return ERROR_NO_MORE_ITEMS;
+    for (size_t i = 0; i < name.size(); i++) {
+        lpValueName[i] = name[i];
     }
-    lpValueName[location[dwIndex].name.size()] = '\0';
-    *lpcchValueName = static_cast<DWORD>(location[dwIndex].name.size() + 1);
+    lpValueName[name.size()] = '\0';
+    *lpcchValueName = static_cast<DWORD>(name.size() + 1);
     if (*lpcbData < sizeof(DWORD)) return ERROR_NO_MORE_ITEMS;
     DWORD *lpcbData_dword = reinterpret_cast<DWORD *>(lpData);
     *lpcbData_dword = location[dwIndex].value;
@@ -347,7 +349,8 @@ LSTATUS __stdcall ShimRegCloseKey(HKEY hKey) {
             return ERROR_SUCCESS;
         }
     }
-    return ERROR_SUCCESS;
+    // means that RegCloseKey was called with an invalid key value (one that doesn't exist or has already been closed)
+    exit(-1);
 }
 
 // Windows app package shims
@@ -370,7 +373,12 @@ LONG WINAPI ShimGetPackagesByPackageFamily(_In_ PCWSTR packageFamilyName, _Inout
         *bufferLength = ARRAYSIZE(package_full_name);
         if (too_small) return ERROR_INSUFFICIENT_BUFFER;
 
-        wcscpy(buffer, package_full_name);
+        for (size_t i = 0; i < sizeof(package_full_name) / sizeof(wchar_t); i++) {
+            if (i >= *bufferLength) {
+                break;
+            }
+            buffer[i] = package_full_name[i];
+        }
         *packageFullNames = buffer;
         return 0;
     }
@@ -391,8 +399,22 @@ LONG WINAPI ShimGetPackagePathByFullName(_In_ PCWSTR packageFullName, _Inout_ UI
         *pathLength = static_cast<UINT32>(platform_shim.app_package_path.size() + 1);
         return ERROR_INSUFFICIENT_BUFFER;
     }
-    wcscpy(path, platform_shim.app_package_path.c_str());
+    for (size_t i = 0; i < platform_shim.app_package_path.length(); i++) {
+        if (i >= *pathLength) {
+            break;
+        }
+        path[i] = platform_shim.app_package_path.c_str()[i];
+    }
     return 0;
+}
+
+using PFN_OutputDebugStringA = void(__stdcall *)(LPCSTR lpOutputString);
+static PFN_OutputDebugStringA fp_OutputDebugStringA = OutputDebugStringA;
+
+void __stdcall intercept_OutputDebugStringA(LPCSTR lpOutputString) {
+    if (lpOutputString != nullptr) {
+        platform_shim.fputs_stderr_log += lpOutputString;
+    }
 }
 
 // Initialization
@@ -444,6 +466,7 @@ void WINAPI DetourFunctions() {
     DetourAttach(&(PVOID &)fpRegCloseKey, (PVOID)ShimRegCloseKey);
     DetourAttach(&(PVOID &)fpGetPackagesByPackageFamily, (PVOID)ShimGetPackagesByPackageFamily);
     DetourAttach(&(PVOID &)fpGetPackagePathByFullName, (PVOID)ShimGetPackagePathByFullName);
+    DetourAttach(&(PVOID &)fp_OutputDebugStringA, (PVOID)intercept_OutputDebugStringA);
     LONG error = DetourTransactionCommit();
 
     if (error != NO_ERROR) {
@@ -473,6 +496,7 @@ void DetachFunctions() {
     DetourDetach(&(PVOID &)fpRegCloseKey, (PVOID)ShimRegCloseKey);
     DetourDetach(&(PVOID &)fpGetPackagesByPackageFamily, (PVOID)ShimGetPackagesByPackageFamily);
     DetourDetach(&(PVOID &)fpGetPackagePathByFullName, (PVOID)ShimGetPackagePathByFullName);
+    DetourDetach(&(PVOID &)fp_OutputDebugStringA, (PVOID)intercept_OutputDebugStringA);
     DetourTransactionCommit();
 }
 
@@ -488,8 +512,8 @@ BOOL WINAPI DllMain([[maybe_unused]] HINSTANCE hinst, DWORD dwReason, [[maybe_un
     }
     return TRUE;
 }
-FRAMEWORK_EXPORT PlatformShim *get_platform_shim(std::vector<fs::FolderManager> *folders) {
-    platform_shim = PlatformShim(folders);
+FRAMEWORK_EXPORT PlatformShim *get_platform_shim(GetFoldersFunc get_folders_by_name_function) {
+    platform_shim = PlatformShim(get_folders_by_name_function);
     return &platform_shim;
 }
 }

@@ -27,7 +27,6 @@
 #include <string.h>
 
 #include "allocation.h"
-#include "debug_utils.h"
 #include "loader.h"
 #include "log.h"
 #include "wsi.h"
@@ -106,19 +105,14 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_GetPhysicalDeviceSurfaceCapabilities2E
     struct loader_physical_device_term *phys_dev_term = (struct loader_physical_device_term *)physicalDevice;
     struct loader_icd_term *icd_term = phys_dev_term->this_icd_term;
 
-    VkIcdSurface *icd_surface = (VkIcdSurface *)(uintptr_t)(surface);
-    uint8_t icd_index = phys_dev_term->icd_index;
-
-    // Unwrap the surface if needed
-    VkSurfaceKHR unwrapped_surface = surface;
-    if (NULL != icd_surface->real_icd_surfaces && NULL != (void *)(uintptr_t)(icd_surface->real_icd_surfaces[icd_index])) {
-        unwrapped_surface = icd_surface->real_icd_surfaces[icd_index];
+    VkResult res = wsi_unwrap_icd_surface(icd_term, &surface);
+    if (res != VK_SUCCESS) {
+        return res;
     }
 
     if (NULL != icd_term->dispatch.GetPhysicalDeviceSurfaceCapabilities2EXT) {
         // Pass the call to the driver
-        return icd_term->dispatch.GetPhysicalDeviceSurfaceCapabilities2EXT(phys_dev_term->phys_dev, unwrapped_surface,
-                                                                           pSurfaceCapabilities);
+        return icd_term->dispatch.GetPhysicalDeviceSurfaceCapabilities2EXT(phys_dev_term->phys_dev, surface, pSurfaceCapabilities);
     } else {
         // Emulate the call
         loader_log(icd_term->this_instance, VULKAN_LOADER_INFO_BIT, 0,
@@ -127,8 +121,7 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_GetPhysicalDeviceSurfaceCapabilities2E
                    icd_term->scanned_icd->lib_name);
 
         VkSurfaceCapabilitiesKHR surface_caps;
-        VkResult res =
-            icd_term->dispatch.GetPhysicalDeviceSurfaceCapabilitiesKHR(phys_dev_term->phys_dev, unwrapped_surface, &surface_caps);
+        res = icd_term->dispatch.GetPhysicalDeviceSurfaceCapabilitiesKHR(phys_dev_term->phys_dev, surface, &surface_caps);
         pSurfaceCapabilities->minImageCount = surface_caps.minImageCount;
         pSurfaceCapabilities->maxImageCount = surface_caps.maxImageCount;
         pSurfaceCapabilities->currentExtent = surface_caps.currentExtent;
@@ -274,18 +267,17 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_GetPhysicalDeviceSurfacePresentModes2E
                    "ICD associated with VkPhysicalDevice does not support GetPhysicalDeviceSurfacePresentModes2EXT");
         abort();
     }
-    VkIcdSurface *icd_surface = (VkIcdSurface *)(uintptr_t)(pSurfaceInfo->surface);
-    uint8_t icd_index = phys_dev_term->icd_index;
-    if (NULL != icd_surface->real_icd_surfaces && NULL != (void *)(uintptr_t)icd_surface->real_icd_surfaces[icd_index]) {
-        VkPhysicalDeviceSurfaceInfo2KHR surface_info_copy;
-        surface_info_copy.sType = pSurfaceInfo->sType;
-        surface_info_copy.pNext = pSurfaceInfo->pNext;
-        surface_info_copy.surface = icd_surface->real_icd_surfaces[icd_index];
-        return icd_term->dispatch.GetPhysicalDeviceSurfacePresentModes2EXT(phys_dev_term->phys_dev, &surface_info_copy,
-                                                                           pPresentModeCount, pPresentModes);
+
+    VkPhysicalDeviceSurfaceInfo2KHR surface_info_copy = *pSurfaceInfo;
+    if (VK_NULL_HANDLE != pSurfaceInfo->surface) {
+        VkResult res = wsi_unwrap_icd_surface(icd_term, &surface_info_copy.surface);
+        if (res != VK_SUCCESS) {
+            return res;
+        }
     }
-    return icd_term->dispatch.GetPhysicalDeviceSurfacePresentModes2EXT(phys_dev_term->phys_dev, pSurfaceInfo, pPresentModeCount,
-                                                                       pPresentModes);
+
+    return icd_term->dispatch.GetPhysicalDeviceSurfacePresentModes2EXT(phys_dev_term->phys_dev, &surface_info_copy,
+                                                                       pPresentModeCount, pPresentModes);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL GetDeviceGroupSurfacePresentModes2EXT(VkDevice device,
@@ -304,9 +296,8 @@ VKAPI_ATTR VkResult VKAPI_CALL GetDeviceGroupSurfacePresentModes2EXT(VkDevice de
 VKAPI_ATTR VkResult VKAPI_CALL terminator_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device,
                                                                                 const VkPhysicalDeviceSurfaceInfo2KHR *pSurfaceInfo,
                                                                                 VkDeviceGroupPresentModeFlagsKHR *pModes) {
-    uint32_t icd_index = 0;
     struct loader_device *dev;
-    struct loader_icd_term *icd_term = loader_get_icd_and_device(device, &dev, &icd_index);
+    struct loader_icd_term *icd_term = loader_get_icd_and_device(device, &dev);
     if (NULL == icd_term || NULL == dev ||
         NULL == dev->loader_dispatch.extension_terminator_dispatch.GetDeviceGroupSurfacePresentModes2EXT) {
         loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
@@ -321,16 +312,17 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_GetDeviceGroupSurfacePresentModes2EXT(
                    "[VUID-vkGetDeviceGroupSurfacePresentModes2EXT-pSurfaceInfo-parameter]");
         abort(); /* Intentionally fail so user can correct issue. */
     }
-    VkIcdSurface *icd_surface = (VkIcdSurface *)(uintptr_t)pSurfaceInfo->surface;
-    if (NULL != icd_surface->real_icd_surfaces && (VkSurfaceKHR)NULL != icd_surface->real_icd_surfaces[icd_index]) {
-        VkPhysicalDeviceSurfaceInfo2KHR surface_info_copy;
-        surface_info_copy.sType = pSurfaceInfo->sType;
-        surface_info_copy.pNext = pSurfaceInfo->pNext;
-        surface_info_copy.surface = icd_surface->real_icd_surfaces[icd_index];
-        return dev->loader_dispatch.extension_terminator_dispatch.GetDeviceGroupSurfacePresentModes2EXT(device, &surface_info_copy,
-                                                                                                        pModes);
+
+    VkPhysicalDeviceSurfaceInfo2KHR surface_info_copy = *pSurfaceInfo;
+    if (VK_NULL_HANDLE != pSurfaceInfo->surface) {
+        VkResult res = wsi_unwrap_icd_surface(icd_term, &surface_info_copy.surface);
+        if (res != VK_SUCCESS) {
+            return res;
+        }
     }
-    return dev->loader_dispatch.extension_terminator_dispatch.GetDeviceGroupSurfacePresentModes2EXT(device, pSurfaceInfo, pModes);
+
+    return dev->loader_dispatch.extension_terminator_dispatch.GetDeviceGroupSurfacePresentModes2EXT(device, &surface_info_copy,
+                                                                                                    pModes);
 }
 
 #endif  // VK_USE_PLATFORM_WIN32_KHR

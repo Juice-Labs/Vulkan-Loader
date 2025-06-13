@@ -31,8 +31,6 @@
  * All the standard library includes and main platform specific includes
  * Dll export macro
  * Manifest ICD & Layer structs
- * path abstraction class - modelled after C++17's filesystem::path
- * FolderManager - manages the contents of a folder, cleaning up when needed
  * per-platform library loading - mirrors the vk_loader_platform
  * LibraryWrapper - RAII wrapper for a library
  * DispatchableHandle - RAII wrapper for vulkan dispatchable handle objects
@@ -44,15 +42,12 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <iostream>
-#include <fstream>
 #include <ostream>
 #include <string>
 #include <vector>
-#include <unordered_map>
-#include <utility>
-#include <memory>
-#include <functional>
+#include <filesystem>
 
 #include <cassert>
 #include <cstring>
@@ -90,7 +85,7 @@
 #include <vulkan/vk_icd.h>
 #include <vulkan/vk_layer.h>
 
-#include "framework_config.h"
+#include FRAMEWORK_CONFIG_HEADER
 
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define FRAMEWORK_EXPORT __attribute__((visibility("default")))
@@ -102,7 +97,22 @@
 #define FRAMEWORK_EXPORT
 #endif
 
+// Define it here so that json_writer.h has access to these functions
+#if defined(WIN32)
+// Convert an UTF-16 wstring to an UTF-8 string
+std::string narrow(const std::wstring& utf16);
+// Convert an UTF-8 string to an UTF-16 wstring
+std::wstring widen(const std::string& utf8);
+#else
+// Do nothing passthrough for the sake of Windows & UTF-16
+std::string narrow(const std::string& utf16);
+// Do nothing passthrough for the sake of Windows & UTF-16
+std::string widen(const std::string& utf8);
+#endif
+
 #include "json_writer.h"
+
+using GetFoldersFunc = std::function<std::vector<std::filesystem::path>(const char*)>;
 
 // get_env_var() - returns a std::string of `name`. if report_failure is true, then it will log to stderr that it didn't find the
 //     env-var
@@ -149,6 +159,15 @@ struct EnvVarWrapper {
         cur_value += list_item;
         set_env_var();
     }
+#if defined(WIN32)
+    void add_to_list(std::wstring const& list_item) {
+        if (!cur_value.empty()) {
+            cur_value += OS_ENV_VAR_LIST_SEPARATOR;
+        }
+        cur_value += narrow(list_item);
+        set_env_var();
+    }
+#endif
     void remove_value() const { remove_env_var(); }
     const char* get() const { return name.c_str(); }
     const char* value() const { return cur_value.c_str(); }
@@ -177,107 +196,6 @@ const char* win_api_error_str(LSTATUS status);
 void print_error_message(LSTATUS status, const char* function_name, std::string optional_message = "");
 #endif
 
-struct ManifestICD;    // forward declaration for FolderManager::write
-struct ManifestLayer;  // forward declaration for FolderManager::write
-
-namespace fs {
-std::string make_native(std::string const&);
-
-struct path {
-#if defined(WIN32)
-    static const char path_separator = '\\';
-#elif COMMON_UNIX_PLATFORMS
-    static const char path_separator = '/';
-#endif
-
-   public:
-    path() {}
-    path(std::string const& in) : contents(make_native(in)) {}
-    path(const char* in) : contents(make_native(std::string(in))) {}
-
-    // concat paths without directoryseperator
-    path& operator+=(path const& in);
-    path& operator+=(std::string const& in);
-    path& operator+=(const char* in);
-
-    // append paths with directoryseperator
-    path& operator/=(path const& in);
-    path& operator/=(std::string const& in);
-    path& operator/=(const char* in);
-
-    // concat paths without directory seperator
-    path operator+(path const& in) const;
-    path operator+(std::string const& in) const;
-    path operator+(const char* in) const;
-
-    // append paths with directory seperator
-    path operator/(path const& in) const;
-    path operator/(std::string const& in) const;
-    path operator/(const char* in) const;
-
-    // accessors
-    path parent_path() const;      // Everything before the last path separator, if there is one.
-    bool has_parent_path() const;  // True if the path contains more than just a filename.
-    path filename() const;         // Everything after the last path separator.
-    path extension() const;        // The file extension, if it has one.
-    path stem() const;             // The filename minus the extension.
-
-    // modifiers
-    path& replace_filename(path const& replacement);
-
-    // get c style string
-    const char* c_str() const { return contents.c_str(); }
-    // get C++ style string
-    std::string const& str() const { return contents; }
-    std::string& str() { return contents; }
-    size_t size() const { return contents.size(); }
-
-    // equality
-    bool operator==(path const& other) const noexcept { return contents == other.contents; }
-    bool operator!=(path const& other) const noexcept { return !(*this == other); }
-
-   private:
-    std::string contents;
-};
-
-std::string fixup_backslashes_in_path(std::string const& in_path);
-fs::path fixup_backslashes_in_path(fs::path const& in_path);
-
-int create_folder(path const& path);
-int delete_folder(path const& folder);
-
-class FolderManager {
-   public:
-    explicit FolderManager(path root_path, std::string name) noexcept;
-    ~FolderManager() noexcept;
-    FolderManager(FolderManager const&) = delete;
-    FolderManager& operator=(FolderManager const&) = delete;
-    FolderManager(FolderManager&& other) noexcept;
-    FolderManager& operator=(FolderManager&& other) noexcept;
-
-    // Add a manifest to the folder
-    path write_manifest(std::string const& name, std::string const& contents);
-
-    // Add an already existing file to the manager, so it will be cleaned up automatically
-    void add_existing_file(std::string const& file_name);
-
-    // close file handle, delete file, remove `name` from managed file list.
-    void remove(std::string const& name);
-
-    // copy file into this folder with name `new_name`. Returns the full path of the file that was copied
-    path copy_file(path const& file, std::string const& new_name);
-
-    // location of the managed folder
-    path location() const { return folder; }
-
-    std::vector<std::string> get_files() const { return files; }
-
-   private:
-    path folder;
-    std::vector<std::string> files;
-};
-}  // namespace fs
-
 // copy the contents of a std::string into a char array and add a null terminator at the end
 // src - std::string to read from
 // dst - char array to write to
@@ -285,37 +203,26 @@ class FolderManager {
 inline void copy_string_to_char_array(std::string const& src, char* dst, size_t size_dst) { dst[src.copy(dst, size_dst - 1)] = 0; }
 
 #if defined(WIN32)
-// Convert an UTF-16 wstring to an UTF-8 string
-std::string narrow(const std::wstring& utf16);
-// Convert an UTF-8 string to an UTF-16 wstring
-std::wstring widen(const std::string& utf8);
-#endif
-
-#if defined(WIN32)
-typedef HMODULE loader_platform_dl_handle;
-inline loader_platform_dl_handle loader_platform_open_library(const char* lib_path) {
-    std::wstring lib_path_utf16 = widen(lib_path);
+typedef HMODULE test_platform_dl_handle;
+inline test_platform_dl_handle test_platform_open_library(const wchar_t* lib_path) {
     // Try loading the library the original way first.
-    loader_platform_dl_handle lib_handle = LoadLibraryW(lib_path_utf16.c_str());
+    test_platform_dl_handle lib_handle = LoadLibraryW(lib_path);
     if (lib_handle == nullptr && GetLastError() == ERROR_MOD_NOT_FOUND) {
         // If that failed, then try loading it with broader search folders.
-        lib_handle =
-            LoadLibraryExW(lib_path_utf16.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+        lib_handle = LoadLibraryExW(lib_path, nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
     }
     return lib_handle;
 }
-inline char* loader_platform_open_library_error(const char* libPath) {
-    static char errorMsg[164];
-    snprintf(errorMsg, 163, "Failed to open dynamic library \"%s\" with error %lu", libPath, GetLastError());
-    return errorMsg;
+inline void test_platform_open_library_print_error(std::filesystem::path const& libPath) {
+    std::wcerr << L"Unable to open library: " << libPath << L" due to: " << std::to_wstring(GetLastError()) << L"\n";
 }
-inline void loader_platform_close_library(loader_platform_dl_handle library) { FreeLibrary(library); }
-inline void* loader_platform_get_proc_address(loader_platform_dl_handle library, const char* name) {
+inline void test_platform_close_library(test_platform_dl_handle library) { FreeLibrary(library); }
+inline void* test_platform_get_proc_address(test_platform_dl_handle library, const char* name) {
     assert(library);
     assert(name);
     return reinterpret_cast<void*>(GetProcAddress(library, name));
 }
-inline char* loader_platform_get_proc_address_error(const char* name) {
+inline char* test_platform_get_proc_address_error(const char* name) {
     static char errorMsg[120];
     snprintf(errorMsg, 119, "Failed to find function \"%s\" in dynamic library", name);
     return errorMsg;
@@ -323,18 +230,24 @@ inline char* loader_platform_get_proc_address_error(const char* name) {
 
 #elif COMMON_UNIX_PLATFORMS
 
-typedef void* loader_platform_dl_handle;
-inline loader_platform_dl_handle loader_platform_open_library(const char* libPath) {
-    return dlopen(libPath, RTLD_LAZY | RTLD_LOCAL);
+typedef void* test_platform_dl_handle;
+inline test_platform_dl_handle test_platform_open_library(const char* libPath) { return dlopen(libPath, RTLD_LAZY | RTLD_LOCAL); }
+inline void test_platform_open_library_print_error(std::filesystem::path const& libPath) {
+    std::wcerr << "Unable to open library: " << libPath << " due to: " << dlerror() << "\n";
 }
-inline const char* loader_platform_open_library_error([[maybe_unused]] const char* libPath) { return dlerror(); }
-inline void loader_platform_close_library(loader_platform_dl_handle library) { dlclose(library); }
-inline void* loader_platform_get_proc_address(loader_platform_dl_handle library, const char* name) {
+inline void test_platform_close_library(test_platform_dl_handle library) {
+    char* loader_disable_dynamic_library_unloading_env_var = getenv("VK_LOADER_DISABLE_DYNAMIC_LIBRARY_UNLOADING");
+    if (NULL == loader_disable_dynamic_library_unloading_env_var ||
+        0 != strncmp(loader_disable_dynamic_library_unloading_env_var, "1", 2)) {
+        dlclose(library);
+    }
+}
+inline void* test_platform_get_proc_address(test_platform_dl_handle library, const char* name) {
     assert(library);
     assert(name);
     return dlsym(library, name);
 }
-inline const char* loader_platform_get_proc_address_error([[maybe_unused]] const char* name) { return dlerror(); }
+inline const char* test_platform_get_proc_address_error([[maybe_unused]] const char* name) { return dlerror(); }
 #endif
 
 class FromVoidStarFunc {
@@ -353,17 +266,16 @@ class FromVoidStarFunc {
 
 struct LibraryWrapper {
     explicit LibraryWrapper() noexcept {}
-    explicit LibraryWrapper(fs::path const& lib_path) noexcept : lib_path(lib_path) {
-        lib_handle = loader_platform_open_library(lib_path.c_str());
+    explicit LibraryWrapper(std::filesystem::path const& lib_path) noexcept : lib_path(lib_path) {
+        lib_handle = test_platform_open_library(lib_path.native().c_str());
         if (lib_handle == nullptr) {
-            fprintf(stderr, "Unable to open library %s: %s\n", lib_path.c_str(),
-                    loader_platform_open_library_error(lib_path.c_str()));
+            test_platform_open_library_print_error(lib_path);
             assert(lib_handle != nullptr && "Must be able to open library");
         }
     }
     ~LibraryWrapper() noexcept {
         if (lib_handle != nullptr) {
-            loader_platform_close_library(lib_handle);
+            test_platform_close_library(lib_handle);
             lib_handle = nullptr;
         }
     }
@@ -375,7 +287,7 @@ struct LibraryWrapper {
     LibraryWrapper& operator=(LibraryWrapper&& wrapper) noexcept {
         if (this != &wrapper) {
             if (lib_handle != nullptr) {
-                loader_platform_close_library(lib_handle);
+                test_platform_close_library(lib_handle);
             }
             lib_handle = wrapper.lib_handle;
             lib_path = wrapper.lib_path;
@@ -385,9 +297,9 @@ struct LibraryWrapper {
     }
     FromVoidStarFunc get_symbol(const char* symbol_name) const {
         assert(lib_handle != nullptr && "Cannot get symbol with null library handle");
-        void* symbol = loader_platform_get_proc_address(lib_handle, symbol_name);
+        void* symbol = test_platform_get_proc_address(lib_handle, symbol_name);
         if (symbol == nullptr) {
-            fprintf(stderr, "Unable to open symbol %s: %s\n", symbol_name, loader_platform_get_proc_address_error(symbol_name));
+            fprintf(stderr, "Unable to open symbol %s: %s\n", symbol_name, test_platform_get_proc_address_error(symbol_name));
             assert(symbol != nullptr && "Must be able to get symbol");
         }
         return FromVoidStarFunc(symbol);
@@ -395,8 +307,8 @@ struct LibraryWrapper {
 
     explicit operator bool() const noexcept { return lib_handle != nullptr; }
 
-    loader_platform_dl_handle lib_handle = nullptr;
-    fs::path lib_path;
+    test_platform_dl_handle lib_handle = nullptr;
+    std::filesystem::path lib_path;
 };
 
 template <typename T>
@@ -411,18 +323,20 @@ struct FRAMEWORK_EXPORT DispatchableHandle {
         handle = reinterpret_cast<T>(ptr_handle);
     }
     ~DispatchableHandle() {
-        delete reinterpret_cast<VK_LOADER_DATA*>(handle);
+        if (handle) {
+            delete reinterpret_cast<VK_LOADER_DATA*>(handle);
+        }
         handle = nullptr;
     }
     DispatchableHandle(DispatchableHandle const&) = delete;
     DispatchableHandle& operator=(DispatchableHandle const&) = delete;
     DispatchableHandle(DispatchableHandle&& other) noexcept : handle(other.handle) { other.handle = nullptr; }
     DispatchableHandle& operator=(DispatchableHandle&& other) noexcept {
-        if (this != &other) {
+        if (handle) {
             delete reinterpret_cast<VK_LOADER_DATA*>(handle);
-            handle = other.handle;
-            other.handle = nullptr;
         }
+        handle = other.handle;
+        other.handle = nullptr;
         return *this;
     }
     bool operator==(T base_handle) { return base_handle == handle; }
@@ -530,6 +444,10 @@ inline std::ostream& operator<<(std::ostream& os, const VkResult& result) {
             return os << "VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR";
         case (VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT):
             return os << "VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT";
+        case (VK_PIPELINE_BINARY_MISSING_KHR):
+            return os << "VK_PIPELINE_BINARY_MISSING_KHR";
+        case (VK_ERROR_NOT_ENOUGH_SPACE_KHR):
+            return os << "VK_ERROR_NOT_ENOUGH_SPACE_KHR";
     }
     return os << static_cast<int32_t>(result);
 }
@@ -547,44 +465,44 @@ inline std::string version_to_string(uint32_t version) {
 }
 
 // Macro to ease the definition of variables with builder member functions
-// class_name = class the member variable is apart of
 // type = type of the variable
 // name = name of the variable
 // default_value = value to default initialize, use {} if nothing else makes sense
-#define BUILDER_VALUE(class_name, type, name, default_value) \
-    type name = default_value;                               \
-    class_name& set_##name(type const& name) {               \
-        this->name = name;                                   \
-        return *this;                                        \
+#define BUILDER_VALUE_WITH_DEFAULT(type, name, default_value) \
+    type name = default_value;                                \
+    auto set_##name(type const& name)->decltype(*this) {      \
+        this->name = name;                                    \
+        return *this;                                         \
     }
 
+#define BUILDER_VALUE(type, name) BUILDER_VALUE_WITH_DEFAULT(type, name, {})
+
 // Macro to ease the definition of vectors with builder member functions
-// class_name = class the member variable is apart of
 // type = type of the variable
 // name = name of the variable
 // singular_name = used for the `add_singular_name` member function
-#define BUILDER_VECTOR(class_name, type, name, singular_name)                    \
-    std::vector<type> name;                                                      \
-    class_name& add_##singular_name(type const& singular_name) {                 \
-        this->name.push_back(singular_name);                                     \
-        return *this;                                                            \
-    }                                                                            \
-    class_name& add_##singular_name##s(std::vector<type> const& singular_name) { \
-        for (auto& elem : singular_name) this->name.push_back(elem);             \
-        return *this;                                                            \
+#define BUILDER_VECTOR(type, name, singular_name)                                          \
+    std::vector<type> name;                                                                \
+    auto add_##singular_name(type const& singular_name)->decltype(*this) {                 \
+        this->name.push_back(singular_name);                                               \
+        return *this;                                                                      \
+    }                                                                                      \
+    auto add_##singular_name##s(std::vector<type> const& singular_name)->decltype(*this) { \
+        for (auto& elem : singular_name) this->name.push_back(elem);                       \
+        return *this;                                                                      \
     }
 // Like BUILDER_VECTOR but for move only types - where passing in means giving up ownership
-#define BUILDER_VECTOR_MOVE_ONLY(class_name, type, name, singular_name) \
-    std::vector<type> name;                                             \
-    class_name& add_##singular_name(type&& singular_name) {             \
-        this->name.push_back(std::move(singular_name));                 \
-        return *this;                                                   \
+#define BUILDER_VECTOR_MOVE_ONLY(type, name, singular_name)           \
+    std::vector<type> name;                                           \
+    auto add_##singular_name(type&& singular_name)->decltype(*this) { \
+        this->name.push_back(std::move(singular_name));               \
+        return *this;                                                 \
     }
 
 struct ManifestVersion {
-    BUILDER_VALUE(ManifestVersion, uint32_t, major, 1)
-    BUILDER_VALUE(ManifestVersion, uint32_t, minor, 0)
-    BUILDER_VALUE(ManifestVersion, uint32_t, patch, 0)
+    BUILDER_VALUE_WITH_DEFAULT(uint32_t, major, 1)
+    BUILDER_VALUE_WITH_DEFAULT(uint32_t, minor, 0)
+    BUILDER_VALUE_WITH_DEFAULT(uint32_t, patch, 0)
 
     std::string get_version_str() const noexcept {
         return std::to_string(major) + "." + std::to_string(minor) + "." + std::to_string(patch);
@@ -593,11 +511,11 @@ struct ManifestVersion {
 
 // ManifestICD builder
 struct ManifestICD {
-    BUILDER_VALUE(ManifestICD, ManifestVersion, file_format_version, {})
-    BUILDER_VALUE(ManifestICD, uint32_t, api_version, 0)
-    BUILDER_VALUE(ManifestICD, fs::path, lib_path, {})
-    BUILDER_VALUE(ManifestICD, bool, is_portability_driver, false)
-    BUILDER_VALUE(ManifestICD, std::string, library_arch, "")
+    BUILDER_VALUE(ManifestVersion, file_format_version)
+    BUILDER_VALUE(uint32_t, api_version)
+    BUILDER_VALUE(std::filesystem::path, lib_path)
+    BUILDER_VALUE(bool, is_portability_driver)
+    BUILDER_VALUE(std::string, library_arch)
     std::string get_manifest_str() const;
 };
 
@@ -614,8 +532,8 @@ struct ManifestLayer {
                 return "INSTANCE";
         }
         struct FunctionOverride {
-            BUILDER_VALUE(FunctionOverride, std::string, vk_func, {})
-            BUILDER_VALUE(FunctionOverride, std::string, override_name, {})
+            BUILDER_VALUE(std::string, vk_func)
+            BUILDER_VALUE(std::string, override_name)
 
             void get_manifest_str(JsonWriter& writer) const { writer.AddKeyedString(vk_func, override_name); }
         };
@@ -628,36 +546,36 @@ struct ManifestLayer {
             std::vector<std::string> entrypoints;
             void get_manifest_str(JsonWriter& writer) const;
         };
-        BUILDER_VALUE(LayerDescription, std::string, name, {})
-        BUILDER_VALUE(LayerDescription, Type, type, Type::INSTANCE)
-        BUILDER_VALUE(LayerDescription, fs::path, lib_path, {})
-        BUILDER_VALUE(LayerDescription, uint32_t, api_version, VK_API_VERSION_1_0)
-        BUILDER_VALUE(LayerDescription, uint32_t, implementation_version, 0)
-        BUILDER_VALUE(LayerDescription, std::string, description, {})
-        BUILDER_VECTOR(LayerDescription, FunctionOverride, functions, function)
-        BUILDER_VECTOR(LayerDescription, Extension, instance_extensions, instance_extension)
-        BUILDER_VECTOR(LayerDescription, Extension, device_extensions, device_extension)
-        BUILDER_VALUE(LayerDescription, std::string, enable_environment, {})
-        BUILDER_VALUE(LayerDescription, std::string, disable_environment, {})
-        BUILDER_VECTOR(LayerDescription, std::string, component_layers, component_layer)
-        BUILDER_VECTOR(LayerDescription, std::string, blacklisted_layers, blacklisted_layer)
-        BUILDER_VECTOR(LayerDescription, std::string, override_paths, override_path)
-        BUILDER_VECTOR(LayerDescription, FunctionOverride, pre_instance_functions, pre_instance_function)
-        BUILDER_VECTOR(LayerDescription, std::string, app_keys, app_key)
-        BUILDER_VALUE(LayerDescription, std::string, library_arch, "")
+        BUILDER_VALUE(std::string, name)
+        BUILDER_VALUE_WITH_DEFAULT(Type, type, Type::INSTANCE)
+        BUILDER_VALUE(std::filesystem::path, lib_path)
+        BUILDER_VALUE_WITH_DEFAULT(uint32_t, api_version, VK_API_VERSION_1_0)
+        BUILDER_VALUE(uint32_t, implementation_version)
+        BUILDER_VALUE(std::string, description)
+        BUILDER_VECTOR(FunctionOverride, functions, function)
+        BUILDER_VECTOR(Extension, instance_extensions, instance_extension)
+        BUILDER_VECTOR(Extension, device_extensions, device_extension)
+        BUILDER_VALUE(std::string, enable_environment)
+        BUILDER_VALUE(std::string, disable_environment)
+        BUILDER_VECTOR(std::string, component_layers, component_layer)
+        BUILDER_VECTOR(std::string, blacklisted_layers, blacklisted_layer)
+        BUILDER_VECTOR(std::filesystem::path, override_paths, override_path)
+        BUILDER_VECTOR(FunctionOverride, pre_instance_functions, pre_instance_function)
+        BUILDER_VECTOR(std::string, app_keys, app_key)
+        BUILDER_VALUE(std::string, library_arch)
 
         void get_manifest_str(JsonWriter& writer) const;
         VkLayerProperties get_layer_properties() const;
     };
-    BUILDER_VALUE(ManifestLayer, ManifestVersion, file_format_version, {})
-    BUILDER_VECTOR(ManifestLayer, LayerDescription, layers, layer)
+    BUILDER_VALUE(ManifestVersion, file_format_version)
+    BUILDER_VECTOR(LayerDescription, layers, layer)
 
     std::string get_manifest_str() const;
 };
 
 struct Extension {
-    BUILDER_VALUE(Extension, std::string, extensionName, {})
-    BUILDER_VALUE(Extension, uint32_t, specVersion, VK_API_VERSION_1_0)
+    BUILDER_VALUE(std::string, extensionName)
+    BUILDER_VALUE_WITH_DEFAULT(uint32_t, specVersion, VK_API_VERSION_1_0)
 
     Extension(const char* name, uint32_t specVersion = VK_API_VERSION_1_0) noexcept
         : extensionName(name), specVersion(specVersion) {}
@@ -673,25 +591,25 @@ struct Extension {
 };
 
 struct MockQueueFamilyProperties {
-    BUILDER_VALUE(MockQueueFamilyProperties, VkQueueFamilyProperties, properties, {})
-    BUILDER_VALUE(MockQueueFamilyProperties, bool, support_present, false)
+    BUILDER_VALUE(VkQueueFamilyProperties, properties)
+    BUILDER_VALUE(bool, support_present)
 
     VkQueueFamilyProperties get() const noexcept { return properties; }
 };
 
 struct InstanceCreateInfo {
-    BUILDER_VALUE(InstanceCreateInfo, VkInstanceCreateInfo, instance_info, {})
-    BUILDER_VALUE(InstanceCreateInfo, VkApplicationInfo, application_info, {})
-    BUILDER_VALUE(InstanceCreateInfo, std::string, app_name, {})
-    BUILDER_VALUE(InstanceCreateInfo, std::string, engine_name, {})
-    BUILDER_VALUE(InstanceCreateInfo, uint32_t, flags, 0)
-    BUILDER_VALUE(InstanceCreateInfo, uint32_t, app_version, 0)
-    BUILDER_VALUE(InstanceCreateInfo, uint32_t, engine_version, 0)
-    BUILDER_VALUE(InstanceCreateInfo, uint32_t, api_version, VK_API_VERSION_1_0)
-    BUILDER_VECTOR(InstanceCreateInfo, const char*, enabled_layers, layer)
-    BUILDER_VECTOR(InstanceCreateInfo, const char*, enabled_extensions, extension)
+    BUILDER_VALUE(VkInstanceCreateInfo, instance_info)
+    BUILDER_VALUE(VkApplicationInfo, application_info)
+    BUILDER_VALUE(std::string, app_name)
+    BUILDER_VALUE(std::string, engine_name)
+    BUILDER_VALUE(uint32_t, flags)
+    BUILDER_VALUE(uint32_t, app_version)
+    BUILDER_VALUE(uint32_t, engine_version)
+    BUILDER_VALUE_WITH_DEFAULT(uint32_t, api_version, VK_API_VERSION_1_0)
+    BUILDER_VECTOR(const char*, enabled_layers, layer)
+    BUILDER_VECTOR(const char*, enabled_extensions, extension)
     // tell the get() function to not provide `application_info`
-    BUILDER_VALUE(InstanceCreateInfo, bool, fill_in_application_info, true)
+    BUILDER_VALUE_WITH_DEFAULT(bool, fill_in_application_info, true)
 
     InstanceCreateInfo();
 
@@ -706,8 +624,8 @@ struct DeviceQueueCreateInfo {
     DeviceQueueCreateInfo();
     DeviceQueueCreateInfo(const VkDeviceQueueCreateInfo* create_info);
 
-    BUILDER_VALUE(DeviceQueueCreateInfo, VkDeviceQueueCreateInfo, queue_create_info, {})
-    BUILDER_VECTOR(DeviceQueueCreateInfo, float, priorities, priority)
+    BUILDER_VALUE(VkDeviceQueueCreateInfo, queue_create_info)
+    BUILDER_VECTOR(float, priorities, priority)
 
     VkDeviceQueueCreateInfo get() noexcept;
 };
@@ -716,10 +634,10 @@ struct DeviceCreateInfo {
     DeviceCreateInfo() = default;
     DeviceCreateInfo(const VkDeviceCreateInfo* create_info);
 
-    BUILDER_VALUE(DeviceCreateInfo, VkDeviceCreateInfo, dev, {})
-    BUILDER_VECTOR(DeviceCreateInfo, const char*, enabled_extensions, extension)
-    BUILDER_VECTOR(DeviceCreateInfo, const char*, enabled_layers, layer)
-    BUILDER_VECTOR(DeviceCreateInfo, DeviceQueueCreateInfo, queue_info_details, device_queue)
+    BUILDER_VALUE(VkDeviceCreateInfo, dev)
+    BUILDER_VECTOR(const char*, enabled_extensions, extension)
+    BUILDER_VECTOR(const char*, enabled_layers, layer)
+    BUILDER_VECTOR(DeviceQueueCreateInfo, queue_info_details, device_queue)
 
     VkDeviceCreateInfo* get() noexcept;
 
@@ -738,6 +656,9 @@ inline bool operator==(const VkQueueFamilyProperties& a, const VkQueueFamilyProp
 }
 inline bool operator!=(const VkQueueFamilyProperties& a, const VkQueueFamilyProperties& b) { return !(a == b); }
 
+inline bool operator==(const VkQueueFamilyProperties& a, const VkQueueFamilyProperties2& b) { return a == b.queueFamilyProperties; }
+inline bool operator!=(const VkQueueFamilyProperties& a, const VkQueueFamilyProperties2& b) { return a != b.queueFamilyProperties; }
+
 inline bool operator==(const VkLayerProperties& a, const VkLayerProperties& b) {
     return string_eq(a.layerName, b.layerName, 256) && string_eq(a.description, b.description, 256) &&
            a.implementationVersion == b.implementationVersion && a.specVersion == b.specVersion;
@@ -748,6 +669,170 @@ inline bool operator==(const VkExtensionProperties& a, const VkExtensionProperti
     return string_eq(a.extensionName, b.extensionName, 256) && a.specVersion == b.specVersion;
 }
 inline bool operator!=(const VkExtensionProperties& a, const VkExtensionProperties& b) { return !(a == b); }
+
+inline bool operator==(const VkPhysicalDeviceFeatures& feats1, const VkPhysicalDeviceFeatures2& feats2) {
+    return feats1.robustBufferAccess == feats2.features.robustBufferAccess &&
+           feats1.fullDrawIndexUint32 == feats2.features.fullDrawIndexUint32 &&
+           feats1.imageCubeArray == feats2.features.imageCubeArray && feats1.independentBlend == feats2.features.independentBlend &&
+           feats1.geometryShader == feats2.features.geometryShader &&
+           feats1.tessellationShader == feats2.features.tessellationShader &&
+           feats1.sampleRateShading == feats2.features.sampleRateShading && feats1.dualSrcBlend == feats2.features.dualSrcBlend &&
+           feats1.logicOp == feats2.features.logicOp && feats1.multiDrawIndirect == feats2.features.multiDrawIndirect &&
+           feats1.drawIndirectFirstInstance == feats2.features.drawIndirectFirstInstance &&
+           feats1.depthClamp == feats2.features.depthClamp && feats1.depthBiasClamp == feats2.features.depthBiasClamp &&
+           feats1.fillModeNonSolid == feats2.features.fillModeNonSolid && feats1.depthBounds == feats2.features.depthBounds &&
+           feats1.wideLines == feats2.features.wideLines && feats1.largePoints == feats2.features.largePoints &&
+           feats1.alphaToOne == feats2.features.alphaToOne && feats1.multiViewport == feats2.features.multiViewport &&
+           feats1.samplerAnisotropy == feats2.features.samplerAnisotropy &&
+           feats1.textureCompressionETC2 == feats2.features.textureCompressionETC2 &&
+           feats1.textureCompressionASTC_LDR == feats2.features.textureCompressionASTC_LDR &&
+           feats1.textureCompressionBC == feats2.features.textureCompressionBC &&
+           feats1.occlusionQueryPrecise == feats2.features.occlusionQueryPrecise &&
+           feats1.pipelineStatisticsQuery == feats2.features.pipelineStatisticsQuery &&
+           feats1.vertexPipelineStoresAndAtomics == feats2.features.vertexPipelineStoresAndAtomics &&
+           feats1.fragmentStoresAndAtomics == feats2.features.fragmentStoresAndAtomics &&
+           feats1.shaderTessellationAndGeometryPointSize == feats2.features.shaderTessellationAndGeometryPointSize &&
+           feats1.shaderImageGatherExtended == feats2.features.shaderImageGatherExtended &&
+           feats1.shaderStorageImageExtendedFormats == feats2.features.shaderStorageImageExtendedFormats &&
+           feats1.shaderStorageImageMultisample == feats2.features.shaderStorageImageMultisample &&
+           feats1.shaderStorageImageReadWithoutFormat == feats2.features.shaderStorageImageReadWithoutFormat &&
+           feats1.shaderStorageImageWriteWithoutFormat == feats2.features.shaderStorageImageWriteWithoutFormat &&
+           feats1.shaderUniformBufferArrayDynamicIndexing == feats2.features.shaderUniformBufferArrayDynamicIndexing &&
+           feats1.shaderSampledImageArrayDynamicIndexing == feats2.features.shaderSampledImageArrayDynamicIndexing &&
+           feats1.shaderStorageBufferArrayDynamicIndexing == feats2.features.shaderStorageBufferArrayDynamicIndexing &&
+           feats1.shaderStorageImageArrayDynamicIndexing == feats2.features.shaderStorageImageArrayDynamicIndexing &&
+           feats1.shaderClipDistance == feats2.features.shaderClipDistance &&
+           feats1.shaderCullDistance == feats2.features.shaderCullDistance &&
+           feats1.shaderFloat64 == feats2.features.shaderFloat64 && feats1.shaderInt64 == feats2.features.shaderInt64 &&
+           feats1.shaderInt16 == feats2.features.shaderInt16 &&
+           feats1.shaderResourceResidency == feats2.features.shaderResourceResidency &&
+           feats1.shaderResourceMinLod == feats2.features.shaderResourceMinLod &&
+           feats1.sparseBinding == feats2.features.sparseBinding &&
+           feats1.sparseResidencyBuffer == feats2.features.sparseResidencyBuffer &&
+           feats1.sparseResidencyImage2D == feats2.features.sparseResidencyImage2D &&
+           feats1.sparseResidencyImage3D == feats2.features.sparseResidencyImage3D &&
+           feats1.sparseResidency2Samples == feats2.features.sparseResidency2Samples &&
+           feats1.sparseResidency4Samples == feats2.features.sparseResidency4Samples &&
+           feats1.sparseResidency8Samples == feats2.features.sparseResidency8Samples &&
+           feats1.sparseResidency16Samples == feats2.features.sparseResidency16Samples &&
+           feats1.sparseResidencyAliased == feats2.features.sparseResidencyAliased &&
+           feats1.variableMultisampleRate == feats2.features.variableMultisampleRate &&
+           feats1.inheritedQueries == feats2.features.inheritedQueries;
+}
+
+inline bool operator==(const VkPhysicalDeviceMemoryProperties& props1, const VkPhysicalDeviceMemoryProperties2& props2) {
+    bool equal = true;
+    equal = equal && props1.memoryTypeCount == props2.memoryProperties.memoryTypeCount;
+    equal = equal && props1.memoryHeapCount == props2.memoryProperties.memoryHeapCount;
+    for (uint32_t i = 0; i < props1.memoryHeapCount; ++i) {
+        equal = equal && props1.memoryHeaps[i].size == props2.memoryProperties.memoryHeaps[i].size;
+        equal = equal && props1.memoryHeaps[i].flags == props2.memoryProperties.memoryHeaps[i].flags;
+    }
+    for (uint32_t i = 0; i < props1.memoryTypeCount; ++i) {
+        equal = equal && props1.memoryTypes[i].propertyFlags == props2.memoryProperties.memoryTypes[i].propertyFlags;
+        equal = equal && props1.memoryTypes[i].heapIndex == props2.memoryProperties.memoryTypes[i].heapIndex;
+    }
+    return equal;
+}
+inline bool operator==(const VkSparseImageFormatProperties& props1, const VkSparseImageFormatProperties& props2) {
+    return props1.aspectMask == props2.aspectMask && props1.imageGranularity.width == props2.imageGranularity.width &&
+           props1.imageGranularity.height == props2.imageGranularity.height &&
+           props1.imageGranularity.depth == props2.imageGranularity.depth && props1.flags == props2.flags;
+}
+inline bool operator==(const VkSparseImageFormatProperties& props1, const VkSparseImageFormatProperties2& props2) {
+    return props1 == props2.properties;
+}
+inline bool operator==(const VkExternalMemoryProperties& props1, const VkExternalMemoryProperties& props2) {
+    return props1.externalMemoryFeatures == props2.externalMemoryFeatures &&
+           props1.exportFromImportedHandleTypes == props2.exportFromImportedHandleTypes &&
+           props1.compatibleHandleTypes == props2.compatibleHandleTypes;
+}
+inline bool operator==(const VkExternalSemaphoreProperties& props1, const VkExternalSemaphoreProperties& props2) {
+    return props1.externalSemaphoreFeatures == props2.externalSemaphoreFeatures &&
+           props1.exportFromImportedHandleTypes == props2.exportFromImportedHandleTypes &&
+           props1.compatibleHandleTypes == props2.compatibleHandleTypes;
+}
+inline bool operator==(const VkExternalFenceProperties& props1, const VkExternalFenceProperties& props2) {
+    return props1.externalFenceFeatures == props2.externalFenceFeatures &&
+           props1.exportFromImportedHandleTypes == props2.exportFromImportedHandleTypes &&
+           props1.compatibleHandleTypes == props2.compatibleHandleTypes;
+}
+inline bool operator==(const VkSurfaceCapabilitiesKHR& props1, const VkSurfaceCapabilitiesKHR& props2) {
+    return props1.minImageCount == props2.minImageCount && props1.maxImageCount == props2.maxImageCount &&
+           props1.currentExtent.width == props2.currentExtent.width && props1.currentExtent.height == props2.currentExtent.height &&
+           props1.minImageExtent.width == props2.minImageExtent.width &&
+           props1.minImageExtent.height == props2.minImageExtent.height &&
+           props1.maxImageExtent.width == props2.maxImageExtent.width &&
+           props1.maxImageExtent.height == props2.maxImageExtent.height &&
+           props1.maxImageArrayLayers == props2.maxImageArrayLayers && props1.supportedTransforms == props2.supportedTransforms &&
+           props1.currentTransform == props2.currentTransform && props1.supportedCompositeAlpha == props2.supportedCompositeAlpha &&
+           props1.supportedUsageFlags == props2.supportedUsageFlags;
+}
+inline bool operator==(const VkSurfacePresentScalingCapabilitiesEXT& caps1, const VkSurfacePresentScalingCapabilitiesEXT& caps2) {
+    return caps1.supportedPresentScaling == caps2.supportedPresentScaling &&
+           caps1.supportedPresentGravityX == caps2.supportedPresentGravityX &&
+           caps1.supportedPresentGravityY == caps2.supportedPresentGravityY &&
+           caps1.minScaledImageExtent.width == caps2.minScaledImageExtent.width &&
+           caps1.minScaledImageExtent.height == caps2.minScaledImageExtent.height &&
+           caps1.maxScaledImageExtent.width == caps2.maxScaledImageExtent.width &&
+           caps1.maxScaledImageExtent.height == caps2.maxScaledImageExtent.height;
+}
+inline bool operator==(const VkSurfaceFormatKHR& format1, const VkSurfaceFormatKHR& format2) {
+    return format1.format == format2.format && format1.colorSpace == format2.colorSpace;
+}
+inline bool operator==(const VkSurfaceFormatKHR& format1, const VkSurfaceFormat2KHR& format2) {
+    return format1 == format2.surfaceFormat;
+}
+inline bool operator==(const VkDisplayPropertiesKHR& props1, const VkDisplayPropertiesKHR& props2) {
+    return props1.display == props2.display && props1.physicalDimensions.width == props2.physicalDimensions.width &&
+           props1.physicalDimensions.height == props2.physicalDimensions.height &&
+           props1.physicalResolution.width == props2.physicalResolution.width &&
+           props1.physicalResolution.height == props2.physicalResolution.height &&
+           props1.supportedTransforms == props2.supportedTransforms && props1.planeReorderPossible == props2.planeReorderPossible &&
+           props1.persistentContent == props2.persistentContent;
+}
+inline bool operator==(const VkDisplayPropertiesKHR& props1, const VkDisplayProperties2KHR& props2) {
+    return props1 == props2.displayProperties;
+}
+inline bool operator==(const VkDisplayModePropertiesKHR& disp1, const VkDisplayModePropertiesKHR& disp2) {
+    return disp1.displayMode == disp2.displayMode && disp1.parameters.visibleRegion.width == disp2.parameters.visibleRegion.width &&
+           disp1.parameters.visibleRegion.height == disp2.parameters.visibleRegion.height &&
+           disp1.parameters.refreshRate == disp2.parameters.refreshRate;
+}
+
+inline bool operator==(const VkDisplayModePropertiesKHR& disp1, const VkDisplayModeProperties2KHR& disp2) {
+    return disp1 == disp2.displayModeProperties;
+}
+inline bool operator==(const VkDisplayPlaneCapabilitiesKHR& caps1, const VkDisplayPlaneCapabilitiesKHR& caps2) {
+    return caps1.supportedAlpha == caps2.supportedAlpha && caps1.minSrcPosition.x == caps2.minSrcPosition.x &&
+           caps1.minSrcPosition.y == caps2.minSrcPosition.y && caps1.maxSrcPosition.x == caps2.maxSrcPosition.x &&
+           caps1.maxSrcPosition.y == caps2.maxSrcPosition.y && caps1.minSrcExtent.width == caps2.minSrcExtent.width &&
+           caps1.minSrcExtent.height == caps2.minSrcExtent.height && caps1.maxSrcExtent.width == caps2.maxSrcExtent.width &&
+           caps1.maxSrcExtent.height == caps2.maxSrcExtent.height && caps1.minDstPosition.x == caps2.minDstPosition.x &&
+           caps1.minDstPosition.y == caps2.minDstPosition.y && caps1.maxDstPosition.x == caps2.maxDstPosition.x &&
+           caps1.maxDstPosition.y == caps2.maxDstPosition.y && caps1.minDstExtent.width == caps2.minDstExtent.width &&
+           caps1.minDstExtent.height == caps2.minDstExtent.height && caps1.maxDstExtent.width == caps2.maxDstExtent.width &&
+           caps1.maxDstExtent.height == caps2.maxDstExtent.height;
+}
+
+inline bool operator==(const VkDisplayPlaneCapabilitiesKHR& caps1, const VkDisplayPlaneCapabilities2KHR& caps2) {
+    return caps1 == caps2.capabilities;
+}
+inline bool operator==(const VkDisplayPlanePropertiesKHR& props1, const VkDisplayPlanePropertiesKHR& props2) {
+    return props1.currentDisplay == props2.currentDisplay && props1.currentStackIndex == props2.currentStackIndex;
+}
+inline bool operator==(const VkDisplayPlanePropertiesKHR& props1, const VkDisplayPlaneProperties2KHR& props2) {
+    return props1 == props2.displayPlaneProperties;
+}
+inline bool operator==(const VkExtent2D& ext1, const VkExtent2D& ext2) {
+    return ext1.height == ext2.height && ext1.width == ext2.width;
+}
+// Allow comparison of vectors of different types as long as their elements are comparable (just has to make sure to only apply when
+// T != U)
+template <typename T, typename U, typename = std::enable_if_t<!std::is_same_v<T, U>>>
+bool operator==(const std::vector<T>& a, const std::vector<U>& b) {
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](const auto& left, const auto& right) { return left == right; });
+}
 
 struct VulkanFunction {
     std::string name;
@@ -838,7 +923,9 @@ inline std::string test_platform_executable_path() {
 inline std::string test_platform_executable_path() { return {}; }
 #elif defined(__QNX__)
 
+#ifndef SYSCONFDIR
 #define SYSCONFDIR "/etc"
+#endif
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -847,14 +934,14 @@ inline std::string test_platform_executable_path() {
     std::string buffer;
     buffer.resize(1024);
     int fd = open("/proc/self/exefile", O_RDONLY);
-    size_t rdsize;
+    ssize_t rdsize;
 
     if (fd == -1) {
         return NULL;
     }
 
     rdsize = read(fd, &buffer[0], buffer.size());
-    if (rdsize == size) {
+    if (rdsize < 0) {
         return NULL;
     }
     buffer[rdsize] = 0x00;
@@ -873,15 +960,7 @@ inline std::string test_platform_executable_path() {
     if (ret > buffer.size()) return NULL;
     buffer.resize(ret);
     buffer[ret] = '\0';
-    return buffer;
-}
-
-inline std::wstring conver_str_to_wstr(std::string const& input) {
-    std::wstring output{};
-    output.resize(input.size());
-    size_t characters_converted = 0;
-    mbstowcs_s(&characters_converted, &output[0], output.size() + 1, input.c_str(), input.size());
-    return output;
+    return narrow(std::filesystem::path(buffer).native());
 }
 
 #endif
