@@ -559,8 +559,6 @@ struct loader_instance_extension_enable_list {
     uint8_t ext_headless_surface;
     uint8_t ext_surface_maintenance1;
     uint8_t ext_acquire_drm_display;
-    uint8_t juice_juda : 1;
-    uint8_t juice_portability : 1;
 #if defined(VK_USE_PLATFORM_DIRECTFB_EXT)
     uint8_t ext_directfb_surface;
 #endif // defined(VK_USE_PLATFORM_DIRECTFB_EXT)

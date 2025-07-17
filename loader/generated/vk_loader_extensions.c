@@ -5087,7 +5087,7 @@ VKAPI_ATTR void VKAPI_CALL CmdTraceRaysIndirect2KHR(
     VkDeviceAddress                             indirectDeviceAddress) {
     const VkLayerDispatchTable *disp = loader_get_dispatch(commandBuffer);
     if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+        loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
                    "vkCmdTraceRaysIndirect2KHR: Invalid commandBuffer "
                    "[VUID-vkCmdTraceRaysIndirect2KHR-commandBuffer-parameter]");
         abort(); /* Intentionally fail so user can correct issue. */
@@ -13631,8 +13631,6 @@ void fill_out_enabled_instance_extensions(uint32_t extension_count, const char *
         else if (0 == strcmp(extension_list[i], VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME)) { enables->ext_surface_maintenance1 = 1; }
 
     // ---- VK_EXT_acquire_drm_display extension commands
-        else if (0 == strcmp(extension_list[i], VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME)) { enables->ext_acquire_drm_display = 1; }
-
         else if (0 == strcmp(extension_list[i], VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME)) { enables->ext_acquire_drm_display = 1; }
 
     // ---- VK_EXT_directfb_surface extension commands
