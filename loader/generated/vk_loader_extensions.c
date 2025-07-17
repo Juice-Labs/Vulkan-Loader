@@ -313,9 +313,6 @@ VKAPI_ATTR bool VKAPI_CALL loader_icd_init_entries(struct loader_instance* inst,
     // ---- VK_NV_optical_flow extension commands
     LOOKUP_GIPA(GetPhysicalDeviceOpticalFlowImageFormatsNV);
 
-    // ---- VK_JUICE_juda extension commands
-    LOOKUP_GIPA(GetRemoteGPUClientJUICE);
-
     // ---- VK_NV_cooperative_vector extension commands
     LOOKUP_GIPA(GetPhysicalDeviceCooperativeVectorPropertiesNV);
 
@@ -1121,18 +1118,6 @@ VKAPI_ATTR void VKAPI_CALL loader_init_device_extension_dispatch_table(struct lo
     table->CmdDrawMultiEXT = (PFN_vkCmdDrawMultiEXT)gdpa(dev, "vkCmdDrawMultiEXT");
     table->CmdDrawMultiIndexedEXT = (PFN_vkCmdDrawMultiIndexedEXT)gdpa(dev, "vkCmdDrawMultiIndexedEXT");
 
-    // ---- VK_JUICE_juda extension commands
-    table->CreateJudaModuleJUICE = (PFN_vkCreateJudaModuleJUICE)gdpa(dev, "vkCreateJudaModuleJUICE");
-    table->CreateJudaFunctionFromModuleJUICE = (PFN_vkCreateJudaFunctionFromModuleJUICE)gdpa(dev, "vkCreateJudaFunctionFromModuleJUICE");
-    table->LaunchJudaKernelJUICE = (PFN_vkLaunchJudaKernelJUICE)gdpa(dev, "vkLaunchJudaKernelJUICE");
-    table->DevicePtrRegisterJUICE = (PFN_vkDevicePtrRegisterJUICE)gdpa(dev, "vkDevicePtrRegisterJUICE");
-    table->QueryValueJUICE = (PFN_vkQueryValueJUICE)gdpa(dev, "vkQueryValueJUICE");
-
-    // ---- VK_JUICE_portability extension commands
-    table->CreateBufferViewJUICE = (PFN_vkCreateBufferViewJUICE)gdpa(dev, "vkCreateBufferViewJUICE");
-    table->BindBufferViewJUICE = (PFN_vkBindBufferViewJUICE)gdpa(dev, "vkBindBufferViewJUICE");
-    table->BindImageViewJUICE = (PFN_vkBindImageViewJUICE)gdpa(dev, "vkBindImageViewJUICE");
-
     // ---- VK_EXT_opacity_micromap extension commands
     table->CreateMicromapEXT = (PFN_vkCreateMicromapEXT)gdpa(dev, "vkCreateMicromapEXT");
     table->DestroyMicromapEXT = (PFN_vkDestroyMicromapEXT)gdpa(dev, "vkDestroyMicromapEXT");
@@ -1575,9 +1560,6 @@ VKAPI_ATTR void VKAPI_CALL loader_init_instance_extension_dispatch_table(VkLayer
 
     // ---- VK_NV_optical_flow extension commands
     table->GetPhysicalDeviceOpticalFlowImageFormatsNV = (PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV)gpa(inst, "vkGetPhysicalDeviceOpticalFlowImageFormatsNV");
-
-    // ---- VK_JUICE_juda extension commands
-    table->GetRemoteGPUClientJUICE = (PFN_vkGetRemoteGPUClientJUICE)gpa(inst, "vkGetRemoteGPUClientJUICE");
 
     // ---- VK_NV_cooperative_vector extension commands
     table->GetPhysicalDeviceCooperativeVectorPropertiesNV = (PFN_vkGetPhysicalDeviceCooperativeVectorPropertiesNV)gpa(inst, "vkGetPhysicalDeviceCooperativeVectorPropertiesNV");
@@ -3057,18 +3039,6 @@ VKAPI_ATTR void* VKAPI_CALL loader_lookup_device_dispatch_table(const VkLayerDis
     if (!strcmp(name, "CmdDrawMultiEXT")) return (void *)table->CmdDrawMultiEXT;
     if (!strcmp(name, "CmdDrawMultiIndexedEXT")) return (void *)table->CmdDrawMultiIndexedEXT;
 
-    // ---- VK_JUICE_juda extension commands
-    if (!strcmp(name, "CreateJudaModuleJUICE")) return (void *)table->CreateJudaModuleJUICE;
-    if (!strcmp(name, "CreateJudaFunctionFromModuleJUICE")) return (void *)table->CreateJudaFunctionFromModuleJUICE;
-    if (!strcmp(name, "LaunchJudaKernelJUICE")) return (void *)table->LaunchJudaKernelJUICE;
-    if (!strcmp(name, "DevicePtrRegisterJUICE")) return (void *)table->DevicePtrRegisterJUICE;
-    if (!strcmp(name, "QueryValueJUICE")) return (void *)table->QueryValueJUICE;
-
-    // ---- VK_JUICE_portability extension commands
-    if (!strcmp(name, "CreateBufferViewJUICE")) return (void *)table->CreateBufferViewJUICE;
-    if (!strcmp(name, "BindBufferViewJUICE")) return (void *)table->BindBufferViewJUICE;
-    if (!strcmp(name, "BindImageViewJUICE")) return (void *)table->BindImageViewJUICE;
-
     // ---- VK_EXT_opacity_micromap extension commands
     if (!strcmp(name, "CreateMicromapEXT")) return (void *)table->CreateMicromapEXT;
     if (!strcmp(name, "DestroyMicromapEXT")) return (void *)table->DestroyMicromapEXT;
@@ -3516,9 +3486,6 @@ VKAPI_ATTR void* VKAPI_CALL loader_lookup_instance_dispatch_table(const VkLayerI
 
     // ---- VK_NV_optical_flow extension commands
     if (!strcmp(name, "GetPhysicalDeviceOpticalFlowImageFormatsNV")) return (void *)table->GetPhysicalDeviceOpticalFlowImageFormatsNV;
-
-    // ---- VK_JUICE_juda extension commands
-    if (!strcmp(name, "GetRemoteGPUClientJUICE")) return (void *)table->GetRemoteGPUClientJUICE;
 
     // ---- VK_NV_cooperative_vector extension commands
     if (!strcmp(name, "GetPhysicalDeviceCooperativeVectorPropertiesNV")) return (void *)table->GetPhysicalDeviceCooperativeVectorPropertiesNV;
@@ -9906,149 +9873,6 @@ VKAPI_ATTR void VKAPI_CALL QueueNotifyOutOfBandNV(
 }
 
 
-
-// ---- VK_JUICE_juda extension trampoline/terminators
-
-VKAPI_ATTR VkResult VKAPI_CALL CreateJudaModuleJUICE(
-    VkDevice                                    device,
-    const uint8_t*                              ptxData,
-    uint64_t                                    ptxDataSize,
-    uint64_t*                                   outModule) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkCreateJudaModuleJUICE: Invalid device "
-                   "[VUID-vkCreateJudaModuleJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->CreateJudaModuleJUICE(device, ptxData, ptxDataSize, outModule);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL CreateJudaFunctionFromModuleJUICE(
-    VkDevice                                    device,
-    uint64_t                                    module,
-    const uint8_t*                              funcNameData,
-    uint64_t                                    funcNameSize,
-    uint64_t*                                   outFunction,
-    uint32_t**                                  data,
-    uint32_t*                                   size) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkCreateJudaFunctionFromModuleJUICE: Invalid device "
-                   "[VUID-vkCreateJudaFunctionFromModuleJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->CreateJudaFunctionFromModuleJUICE(device, module, funcNameData, funcNameSize, outFunction, data, size);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL LaunchJudaKernelJUICE(
-    VkDevice                                    device,
-    const VkJudaKernelInvocationJUICE*          invocation) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkLaunchJudaKernelJUICE: Invalid device "
-                   "[VUID-vkLaunchJudaKernelJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->LaunchJudaKernelJUICE(device, invocation);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL DevicePtrRegisterJUICE(
-    VkDevice                                    device,
-    const VkJudaDevicePtrRegistrationJUICE*     devPtr,
-    void**                                      outDevPtr) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkDevicePtrRegisterJUICE: Invalid device "
-                   "[VUID-vkDevicePtrRegisterJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->DevicePtrRegisterJUICE(device, devPtr, outDevPtr);
-}
-
-VKAPI_ATTR uint64_t VKAPI_CALL QueryValueJUICE(
-    VkDevice                                    device,
-    VkJudaQueryValueJUICE*                      queryInfo,
-    VkBool32                                    synchronous) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(device);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkQueryValueJUICE: Invalid device "
-                   "[VUID-vkQueryValueJUICE-device-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return disp->QueryValueJUICE(device, queryInfo, synchronous);
-}
-
-VKAPI_ATTR void* VKAPI_CALL GetRemoteGPUClientJUICE(
-    VkInstance                                  instance) {
-    struct loader_instance *inst = loader_get_instance(instance);
-    if (NULL == inst) {
-        loader_log(
-            NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-            "vkGetRemoteGPUClientJUICE: Invalid instance [VUID-vkGetRemoteGPUClientJUICE-instance-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return inst->disp->layer_inst_disp.GetRemoteGPUClientJUICE(instance);
-}
-
-VKAPI_ATTR void* VKAPI_CALL terminator_GetRemoteGPUClientJUICE(
-    VkInstance                                  instance) {
-    struct loader_instance *inst = loader_get_instance(instance);
-    if (NULL == inst) {
-        loader_log(
-            NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-            "vkGetRemoteGPUClientJUICE: Invalid instance [VUID-vkGetRemoteGPUClientJUICE-instance-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    return inst->disp->layer_inst_disp.GetRemoteGPUClientJUICE(instance);
-}
-
-
-// ---- VK_JUICE_portability extension trampoline/terminators
-
-VKAPI_ATTR void VKAPI_CALL CreateBufferViewJUICE(
-    VkDeviceMemory                              memory,
-    const VkD3D12BufferViewCreateInfoJUICE*     pInfo) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(memory);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkCreateBufferViewJUICE: Invalid memory "
-                   "[VUID-vkCreateBufferViewJUICE-memory-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    disp->CreateBufferViewJUICE(memory, pInfo);
-}
-
-VKAPI_ATTR void VKAPI_CALL BindBufferViewJUICE(
-    VkDeviceMemory                              memory,
-    const VkD3D12BindBufferViewInfoJUICE*       pInfo) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(memory);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkBindBufferViewJUICE: Invalid memory "
-                   "[VUID-vkBindBufferViewJUICE-memory-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    disp->BindBufferViewJUICE(memory, pInfo);
-}
-
-VKAPI_ATTR void VKAPI_CALL BindImageViewJUICE(
-    VkDeviceMemory                              memory,
-    const VkD3D12BindImageViewInfoJUICE*        pInfo) {
-    const VkLayerDispatchTable *disp = loader_get_dispatch(memory);
-    if (NULL == disp) {
-        loader_log(NULL, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
-                   "vkBindImageViewJUICE: Invalid memory "
-                   "[VUID-vkBindImageViewJUICE-memory-parameter]");
-        abort(); /* Intentionally fail so user can correct issue. */
-    }
-    disp->BindImageViewJUICE(memory, pInfo);
-}
-
 // ---- VK_EXT_attachment_feedback_loop_dynamic_state extension trampoline/terminators
 
 VKAPI_ATTR void VKAPI_CALL CmdSetAttachmentFeedbackLoopEnableEXT(
@@ -12449,45 +12273,6 @@ bool extension_instance_gpa(struct loader_instance *ptr_instance, const char *na
         return true;
     }
 
-    // ---- VK_JUICE_juda extension commands
-    if (!strcmp("vkCreateJudaModuleJUICE", name)) {
-        *addr = (void *)CreateJudaModuleJUICE;
-        return true;
-    }
-    if (!strcmp("vkCreateJudaFunctionFromModuleJUICE", name)) {
-        *addr = (void *)CreateJudaFunctionFromModuleJUICE;
-        return true;
-    }
-    if (!strcmp("vkLaunchJudaKernelJUICE", name)) {
-        *addr = (void *)LaunchJudaKernelJUICE;
-        return true;
-    }
-    if (!strcmp("vkDevicePtrRegisterJUICE", name)) {
-        *addr = (void *)DevicePtrRegisterJUICE;
-        return true;
-    }
-    if (!strcmp("vkQueryValueJUICE", name)) {
-        *addr = (void *)QueryValueJUICE;
-        return true;
-    }
-    if (!strcmp("vkGetRemoteGPUClientJUICE", name)) {
-        *addr = (void *)GetRemoteGPUClientJUICE;
-        return true;
-    }
-
-    // ---- VK_JUICE_portability extension commands
-    if (!strcmp("vkCreateBufferViewJUICE", name)) {
-        *addr = (void *)CreateBufferViewJUICE;
-        return true;
-    }
-    if (!strcmp("vkBindBufferViewJUICE", name)) {
-        *addr = (void *)BindBufferViewJUICE;
-        return true;
-    }
-    if (!strcmp("vkBindImageViewJUICE", name)) {
-        *addr = (void *)BindImageViewJUICE;
-        return true;
-    }
     // ---- VK_EXT_opacity_micromap extension commands
     if (!strcmp("vkCreateMicromapEXT", name)) {
         *addr = (void *)CreateMicromapEXT;
@@ -13194,11 +12979,6 @@ void fill_out_enabled_instance_extensions(uint32_t extension_count, const char *
     // ---- VK_EXT_acquire_drm_display extension commands
         else if (0 == strcmp(extension_list[i], VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME)) { enables->ext_acquire_drm_display = 1; }
 
-    // ---- VK_JUICE_juda extension commands
-        else if (0 == strcmp(extension_list[i], VK_JUICE_JUDA_EXTENSION_NAME)) { enables->juice_juda = 1; }
-    // ---- VK_JUICE_portability extension commands
-        else if (0 == strcmp(extension_list[i], VK_JUICE_PORTABILITY_EXTENSION_NAME)) { enables->juice_portability = 1; }
-        
         else if (0 == strcmp(extension_list[i], VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME)) { enables->ext_acquire_drm_display = 1; }
 
     // ---- VK_EXT_directfb_surface extension commands
@@ -13567,9 +13347,6 @@ const VkLayerInstanceDispatchTable instance_disp = {
     // ---- VK_NV_optical_flow extension commands
     .GetPhysicalDeviceOpticalFlowImageFormatsNV = terminator_GetPhysicalDeviceOpticalFlowImageFormatsNV,
 
-    // ---- VK_JUICE_juda extension commands
-    .GetRemoteGPUClientJUICE = terminator_GetRemoteGPUClientJUICE,
-
     // ---- VK_NV_cooperative_vector extension commands
     .GetPhysicalDeviceCooperativeVectorPropertiesNV = terminator_GetPhysicalDeviceCooperativeVectorPropertiesNV,
 
@@ -13646,8 +13423,6 @@ const char *const LOADER_INSTANCE_EXTENSIONS[] = {
 #if defined(VK_USE_PLATFORM_SCREEN_QNX)
                                                   VK_QNX_SCREEN_SURFACE_EXTENSION_NAME,
 #endif // VK_USE_PLATFORM_SCREEN_QNX
-                                                  VK_JUICE_JUDA_EXTENSION_NAME,
-                                                  VK_JUICE_PORTABILITY_EXTENSION_NAME,
                                                   VK_GOOGLE_SURFACELESS_QUERY_EXTENSION_NAME,
                                                   VK_LUNARG_DIRECT_DRIVER_LOADING_EXTENSION_NAME,
                                                   VK_EXT_LAYER_SETTINGS_EXTENSION_NAME,

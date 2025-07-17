@@ -292,9 +292,6 @@ typedef struct VkLayerInstanceDispatchTable_ {
     // ---- VK_NV_optical_flow extension commands
     PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV GetPhysicalDeviceOpticalFlowImageFormatsNV;
 
-    // ---- VK_JUICE_juda extension commands
-    PFN_vkGetRemoteGPUClientJUICE GetRemoteGPUClientJUICE;
-
     // ---- VK_NV_cooperative_vector extension commands
     PFN_vkGetPhysicalDeviceCooperativeVectorPropertiesNV GetPhysicalDeviceCooperativeVectorPropertiesNV;
 
@@ -1082,18 +1079,6 @@ typedef struct VkLayerDispatchTable_ {
     // ---- VK_EXT_multi_draw extension commands
     PFN_vkCmdDrawMultiEXT CmdDrawMultiEXT;
     PFN_vkCmdDrawMultiIndexedEXT CmdDrawMultiIndexedEXT;
-
-    // ---- VK_JUICE_juda extension commands
-    PFN_vkCreateJudaModuleJUICE CreateJudaModuleJUICE;
-    PFN_vkCreateJudaFunctionFromModuleJUICE CreateJudaFunctionFromModuleJUICE;
-    PFN_vkLaunchJudaKernelJUICE LaunchJudaKernelJUICE;
-    PFN_vkDevicePtrRegisterJUICE DevicePtrRegisterJUICE;
-    PFN_vkQueryValueJUICE QueryValueJUICE;
-
-    // ---- VK_JUICE_portability extension commands
-    PFN_vkCreateBufferViewJUICE CreateBufferViewJUICE;
-    PFN_vkBindBufferViewJUICE BindBufferViewJUICE;
-    PFN_vkBindImageViewJUICE BindImageViewJUICE;
 
     // ---- VK_EXT_opacity_micromap extension commands
     PFN_vkCreateMicromapEXT CreateMicromapEXT;

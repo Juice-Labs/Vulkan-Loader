@@ -480,9 +480,6 @@ struct loader_icd_term_dispatch {
     // ---- VK_NV_optical_flow extension commands
     PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV GetPhysicalDeviceOpticalFlowImageFormatsNV;
 
-    // ---- VK_JUICE_juda extension commands
-    PFN_vkGetRemoteGPUClientJUICE GetRemoteGPUClientJUICE;
-
     // ---- VK_NV_cooperative_vector extension commands
     PFN_vkGetPhysicalDeviceCooperativeVectorPropertiesNV GetPhysicalDeviceCooperativeVectorPropertiesNV;
 
