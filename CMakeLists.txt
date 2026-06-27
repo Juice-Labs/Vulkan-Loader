@@ -170,6 +170,12 @@ else()
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSTEM_PROCESSOR)
 endif()
 
+target_compile_features(loader_common_options INTERFACE c_std_11)
+target_compile_features(loader_common_options INTERFACE cxx_std_17)
+set(LOADER_STANDARD_C_PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS OFF)
+set(LOADER_STANDARD_CXX_PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS OFF)
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSTEM_PROCESSOR)
+
 option(BUILD_WERROR "Enable warnings as errors")
 
 # Set warnings as errors and the main diagnostic flags
