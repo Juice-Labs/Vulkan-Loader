@@ -399,7 +399,7 @@ if(WIN32)
     # msvc: vulkan-1.lib / vulkan-1.dll
     set_target_properties(vulkan
                           PROPERTIES
-                          OUTPUT_NAME ${API_TYPE}-1)
+                          OUTPUT_NAME RemoteGPUvulkan-1)
     if(MINGW)
         # generate the same DLL with mingw
         set_target_properties(vulkan
@@ -545,9 +545,9 @@ if (APPLE_STATIC_LOADER)
 endif()
 
 # Generate CMake Configuration File (IE: VulkanLoaderConfig.cmake)
-install(TARGETS vulkan EXPORT VulkanLoaderConfig)
+#install(TARGETS vulkan EXPORT VulkanLoaderConfig)
 set_target_properties(vulkan PROPERTIES EXPORT_NAME "Loader")
-install(EXPORT VulkanLoaderConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanLoader NAMESPACE Vulkan::)
+#install(EXPORT VulkanLoaderConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanLoader NAMESPACE Vulkan::)
 
 # Generate CMake Version File (IE: VulkanLoaderConfigVersion.cmake)
 include(CMakePackageConfigHelpers)
@@ -582,6 +582,20 @@ if (PKG_CONFIG_FOUND)
     endif()
     configure_file("vulkan.pc.in" "vulkan.pc" @ONLY)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/vulkan.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig" RENAME "${API_TYPE}.pc")
+endif()
+
+target_link_libraries(vulkan PUBLIC Vulkan::Headers)
+add_library(Vulkan::Vulkan ALIAS vulkan)
+
+if(WIN32)
+    install(TARGETS vulkan
+            RUNTIME DESTINATION ${CMAKE_INSTALL_JUICE_GPU}/graphics)
+
+    install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/RemoteGPUvulkan-1.pdb
+            DESTINATION ${CMAKE_INSTALL_PDB_PREFIX})
+else()
+    install(TARGETS vulkan
+            LIBRARY DESTINATION ${CMAKE_INSTALL_JUICE_GPU}/graphics)
 endif()
 
 if (CODE_COVERAGE)
