@@ -230,7 +230,11 @@ end
         set(ASM_COMPILER_WORKS false)
     endif()
 
-    if(ASM_COMPILER_WORKS)
+    # Vulkan-Loader's `asm_offset` helper requires a dialect argument (MASM/MARMASM/GAS).
+    # In a larger superbuild, ASM_MASM may be detected as working even when `USE_MASM` is OFF,
+    # which can lead to generating an `asm_offset` custom build step without a dialect and an
+    # exit code of -1. Gate all MASM assembly support on `USE_MASM`.
+    if(USE_MASM AND ASM_COMPILER_WORKS)
         add_executable(asm_offset asm_offset.c)
         target_link_libraries(asm_offset PRIVATE loader_specific_options)
         # If am emulator is provided (Like Wine), or running on native, run asm_offset to generate gen_defines.asm
@@ -259,7 +263,7 @@ end
             list(APPEND OPT_LOADER_SRCS unknown_ext_chain_masm.asm)
         endif()
         set(UNKNOWN_FUNCTIONS_SUPPORTED ON)
-    else()
+    elseif(USE_MASM)
         message(WARNING "Could not find working ${} assembler\n${ASM_FAILURE_MSG}")
     endif()
 elseif(UNIX OR MINGW OR (WIN32 AND USE_GAS)) # i.e.: Linux & Apple & MinGW & Windows using Clang-CL
