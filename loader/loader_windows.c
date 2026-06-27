@@ -334,39 +334,39 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
         unsigned int vendor_id;
     } known_drivers[] = {
 #if defined(_WIN64)
-        {
+        /*{
             .filename = "igvk64.json",
             .vendor_id = 0x8086,
-        },
+        },*/
         {
             .filename = "nv-vk64.json",
             .vendor_id = 0x10de,
         },
-        {
+        /*{
             .filename = "amd-vulkan64.json",
             .vendor_id = 0x1002,
         },
         {
             .filename = "amdvlk64.json",
             .vendor_id = 0x1002,
-        },
+        },*/
 #else
-        {
+        /*{
             .filename = "igvk32.json",
             .vendor_id = 0x8086,
-        },
+        },*/
         {
             .filename = "nv-vk32.json",
             .vendor_id = 0x10de,
         },
-        {
+        /*{
             .filename = "amd-vulkan32.json",
             .vendor_id = 0x1002,
         },
         {
             .filename = "amdvlk32.json",
             .vendor_id = 0x1002,
-        },
+        },*/
 #endif
     };
 
