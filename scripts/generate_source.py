@@ -188,6 +188,15 @@ def main(argv):
     group.add_argument('-o', action='store', dest='directory', help='Create target and related files in specified directory')
     args = parser.parse_args(argv)
 
+    gen_cmds = [[common_codegen.repo_relative('scripts/loader_genvk.py'),
+                 '-registry', os.path.abspath(os.path.join(args.registry,  'vk.xml')),
+                 '-scripts', os.path.abspath(os.path.join(args.registry, '..', 'scripts')),
+                 '-quiet',
+                 filename] for filename in ['vk_layer_dispatch_table.h',
+                                            'vk_loader_extensions.h',
+                                            'vk_loader_extensions.c',
+                                            'vk_object_types.h']]
+
     repo_dir = common_codegen.repo_relative('.')
 
     registry = os.path.abspath(os.path.join(args.registry,  'vk.xml'))

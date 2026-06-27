@@ -56,6 +56,7 @@ platform_dict = {
     'vi' : 'VK_USE_PLATFORM_VI_NN',
     'wayland' : 'VK_USE_PLATFORM_WAYLAND_KHR',
     'win32' : 'VK_USE_PLATFORM_WIN32_KHR',
+    'win32_linux_emulated' : 'VK_TRUE',
     'xcb' : 'VK_USE_PLATFORM_XCB_KHR',
     'xlib' : 'VK_USE_PLATFORM_XLIB_KHR',
     'directfb' : 'VK_USE_PLATFORM_DIRECTFB_EXT',
